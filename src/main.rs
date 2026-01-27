@@ -1,4 +1,5 @@
 use crate::player::player::Player;
+use dioxus::desktop::tao::dpi::LogicalSize;
 #[cfg(target_os = "macos")]
 use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 use dioxus::prelude::*;
@@ -31,7 +32,8 @@ const TAILWIND_CSS: Asset = asset!("assets/tailwind.css");
 fn main() {
     let mut window = dioxus::desktop::WindowBuilder::new()
         .with_title("Rusic")
-        .with_resizable(true);
+        .with_resizable(true)
+        .with_inner_size(LogicalSize::new(1350.0, 800.0));
 
     #[cfg(target_os = "macos")]
     {

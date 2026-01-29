@@ -23,7 +23,7 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         let stream = OutputStreamBuilder::open_default_stream().expect("open default audio stream");
-        let sink = Sink::connect_new(&stream.mixer());
+        let sink = Sink::connect_new(stream.mixer());
 
         Self {
             stream,
@@ -35,7 +35,7 @@ impl Player {
     }
 
     pub fn play(&mut self, source: impl Source<Item = f32> + Send + 'static, meta: NowPlayingMeta) {
-        let new_sink = Sink::connect_new(&self.stream.mixer());
+        let new_sink = Sink::connect_new(self.stream.mixer());
         new_sink.append(source);
         new_sink.play();
 

@@ -11,10 +11,11 @@ pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<String> {
     path.map(|p| {
         let p = p.as_ref();
         let p_str = p.to_string_lossy();
-        let abs_path = if p_str.starts_with("./") {
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join(&p_str[2..])
+        // why changed to strip_prefix -> Using str:strip_{prefix,suffix} is safer and may have better performance as there is no slicing which may panic
+        // and the compiler does not need to insert this panic code.
+        // It is also sometimes more readable as it removes the need for duplicating or storing the pattern used by str::{starts,ends}_with and in the slicing.
+        let abs_path = if let Some(path) = p_str.strip_prefix("./") {
+            std::env::current_dir().unwrap_or_default().join(path)
         } else {
             p.to_path_buf()
         };

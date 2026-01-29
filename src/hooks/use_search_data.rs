@@ -2,10 +2,15 @@ use crate::reader::models::{Album, Track};
 use crate::reader::Library;
 use dioxus::prelude::*;
 
+// why these, its because code was looking complex and clippy said use type for them to make them look
+// good.
+type TrackRes = Vec<(Track, Option<String>)>;
+type AlbumRes = Vec<(Album, Option<String>)>;
+
 #[derive(Clone, Copy)]
 pub struct SearchData {
     pub genres: Memo<Vec<(String, Option<String>)>>,
-    pub search_results: Memo<Option<(Vec<(Track, Option<String>)>, Vec<(Album, Option<String>)>)>>,
+    pub search_results: Memo<Option<(TrackRes, AlbumRes)>>,
     pub search_query: Signal<String>,
 }
 

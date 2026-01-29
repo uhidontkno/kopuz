@@ -1,5 +1,5 @@
-use dioxus::prelude::*;
 use crate::reader::PlaylistStore;
+use dioxus::prelude::*;
 
 #[derive(PartialEq, Clone, Copy, Props)]
 pub struct PlaylistModalProps {
@@ -11,7 +11,7 @@ pub struct PlaylistModalProps {
 
 #[component]
 pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
-    let mut new_playlist_name = use_signal(|| String::new());
+    let mut new_playlist_name = use_signal(String::new);
     let store = props.playlist_store.read();
     let playlists = store.playlists.clone();
 
@@ -23,7 +23,7 @@ pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
                 class: "bg-neutral-900 rounded-xl border border-white/10 w-full max-w-md p-6 shadow-2xl",
                 onclick: move |e| e.stop_propagation(),
                 h2 { class: "text-xl font-bold text-white mb-4", "Add to Playlist" }
-                
+
                 div { class: "max-h-60 overflow-y-auto mb-4 space-y-2",
                     if store.playlists.is_empty() {
                         p { class: "text-slate-500 text-sm italic", "No playlists found." }
@@ -62,7 +62,7 @@ pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
                         }
                     }
                 }
-                
+
                 div { class: "mt-6 flex justify-end",
                     button {
                         class: "text-slate-400 hover:text-white text-sm transition-colors",

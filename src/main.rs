@@ -3,6 +3,7 @@ use dioxus::desktop::tao::dpi::LogicalSize;
 #[cfg(target_os = "macos")]
 use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 use dioxus::prelude::*;
+use std::borrow::Cow;
 
 mod components;
 pub mod config;
@@ -70,13 +71,13 @@ fn main() {
             let path = std::path::Path::new(&decoded_path);
             let content = std::fs::read(path)
                 .or_else(|_| {
-                    if decoded_path.starts_with('/') {
+                    if decoded_path.strip_prefix('/').is_some() {
                         std::fs::read(std::path::Path::new(&decoded_path[1..]))
                     } else {
                         Err(std::io::Error::from(std::io::ErrorKind::NotFound))
                     }
                 })
-                .map(|bytes| std::borrow::Cow::from(bytes))
+                .map(Cow::from)
                 .unwrap_or_else(|_| std::borrow::Cow::from(Vec::new()));
 
             http::Response::builder()
@@ -115,17 +116,19 @@ fn App() -> Element {
     let mut trigger_rescan = use_signal(|| 0);
     let current_playing = use_signal(|| 0);
     let player = use_signal(Player::new);
-    let current_song_cover_url = use_signal(|| String::new());
-    let current_song_title = use_signal(|| String::new());
-    let current_song_artist = use_signal(|| String::new());
+    //why changed all use_signal(|| String::new()) to use_signal(String::new) it is because Needlessly creating
+    //a closure adds code for no benefit and gives the optimizer more work.
+    let current_song_cover_url = use_signal(String::new);
+    let current_song_title = use_signal(String::new);
+    let current_song_artist = use_signal(String::new);
     let current_song_duration = use_signal(|| 0u64);
     let current_song_progress = use_signal(|| 0u64);
     let volume = use_signal(|| 1.0f32);
 
     let is_playing = use_signal(|| false);
 
-    let mut selected_album_id = use_signal(|| String::new());
-    let mut search_query = use_signal(|| String::new());
+    let mut selected_album_id = use_signal(String::new);
+    let mut search_query = use_signal(String::new);
 
     use_effect(move || {
         let _ = config.read().save(&config_path());
@@ -156,8 +159,8 @@ fn App() -> Element {
                     library.set(current_lib.clone());
                 }
 
-                if let Ok(_) =
-                    reader::scan_directory(music_dir, cover_cache(), &mut current_lib).await
+                if (reader::scan_directory(music_dir, cover_cache(), &mut current_lib).await)
+                    .is_ok()
                 {
                     library.set(current_lib.clone());
                     let _ = current_lib.save(&lib_path());
@@ -166,7 +169,7 @@ fn App() -> Element {
         });
     });
 
-    let queue = use_signal(|| Vec::<reader::Track>::new());
+    let queue = use_signal(Vec::<reader::Track>::new);
     let current_queue_index = use_signal(|| 0usize);
 
     let ctrl = hooks::use_player_controller(
@@ -232,7 +235,7 @@ fn App() -> Element {
                                 library: library,
                                 playlist_store: playlist_store,
                                 search_query: search_query,
-                                player: player.clone(),
+                                player: player,
                                 is_playing: is_playing,
                                 current_playing: current_playing,
                                 current_song_cover_url: current_song_cover_url,
@@ -249,7 +252,7 @@ fn App() -> Element {
                                 library: library,
                                 playlist_store: playlist_store,
                                 on_rescan: move |_| *trigger_rescan.write() += 1,
-                                player: player.clone(),
+                                player: player,
                                 is_playing: is_playing,
                                 current_playing: current_playing,
                                 current_song_cover_url: current_song_cover_url,
@@ -266,7 +269,7 @@ fn App() -> Element {
                                 library: library,
                                 album_id: selected_album_id,
                                 playlist_store: playlist_store,
-                                player: player.clone(),
+                                player: player,
                                 is_playing: is_playing,
                                 current_playing: current_playing,
                                 current_song_cover_url: current_song_cover_url,
@@ -282,7 +285,7 @@ fn App() -> Element {
                             pages::playlists::PlaylistsPage {
                                 playlist_store: playlist_store,
                                 library: library,
-                                player: player.clone(),
+                                player: player,
                                 is_playing: is_playing,
                                 current_playing: current_playing,
                                 current_song_cover_url: current_song_cover_url,

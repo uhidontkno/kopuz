@@ -154,7 +154,7 @@ pub fn update_now_playing(
                     msg_send![artwork_ptr, initWithImage: &*image];
 
                 if !artwork.is_null() {
-                    let artwork_ref: &AnyObject = std::mem::transmute(artwork);
+                    let artwork_ref: &AnyObject = &*(artwork as *const objc2::runtime::AnyObject);
                     info.setObject_forKey(
                         artwork_ref,
                         ProtocolObject::from_ref(MPMediaItemPropertyArtwork),

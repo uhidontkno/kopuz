@@ -1,5 +1,5 @@
 {
-  description = "Rusic - A Dioxus-based music application";
+  description = "Rusic - A modern music player";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -39,14 +39,6 @@
           lld
           mold
         ];
-
-        shellEnv = {
-          RUSTFLAGS = "-C link-arg=-fuse-ld=lld";
-          GIO_MODULE_DIR = "${pkgs.glib-networking}/lib/gio/modules/";
-          PKG_CONFIG_PATH = pkgs.lib.makeSearchPath "lib/pkgconfig" buildInputs;
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
-          WEBKIT_DISABLE_COMPOSITING_MODE = "1";
-        };
       in
       {
         devShells.default = pkgs.mkShell {
@@ -60,33 +52,18 @@
           ]);
 
           shellHook = ''
-            export RUSTFLAGS="${shellEnv.RUSTFLAGS}"
-            export GIO_MODULE_DIR="${shellEnv.GIO_MODULE_DIR}"
-            export LD_LIBRARY_PATH="${shellEnv.LD_LIBRARY_PATH}:$LD_LIBRARY_PATH"
-            export WEBKIT_DISABLE_COMPOSITING_MODE="${shellEnv.WEBKIT_DISABLE_COMPOSITING_MODE}"
+            export RUSTFLAGS="-C link-arg=-fuse-ld=lld"
+            export GIO_MODULE_DIR="${pkgs.glib-networking}/lib/gio/modules/"
+            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH"
+            export WEBKIT_DISABLE_COMPOSITING_MODE="1"
           '';
         };
 
-        packages.default = pkgs.rustPlatform.buildRustPackage {
-          pname = "rusic";
-          version = "0.1.0";
-          src = ./.;
+        packages.default = pkgs.callPackage ./nix/package.nix { };
 
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-          };
-
-          inherit buildInputs nativeBuildInputs;
-
-          CARGO_BUILD_RUSTFLAGS = "-C link-arg=-fuse-ld=lld";
-          GIO_MODULE_DIR = "${pkgs.glib-networking}/lib/gio/modules/";
-          doCheck = false;
-
-          meta = with pkgs.lib; {
-            description = "A Dioxus-based music application";
-            license = licenses.mit;
-            maintainers = [ ];
-          };
+        apps.default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/rusic";
         };
       }
     );

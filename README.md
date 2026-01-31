@@ -16,38 +16,98 @@ Rusic allows you to scan your local directories for audio files, automatically o
 - **Theming**: Includes dynamic theming support to customize the visual appearance.
 - **Native Integration**: Integrates with system media controls and "Now Playing" displays (only macOS for now).
 
-## Getting Started
+## Installation
 
-Do a git clone to this project to get the current code.
-`git clone https://github.com/temidaradev/rusic.git`
+### NixOS / Nix
 
-Ensure you have Rust and Cargo installed on your system.
+```bash
+nix run github:temidaradev/rusic
+```
 
-### Prerequisites
+Or add to your flake:
+```nix
+inputs.rusic.url = "github:temidaradev/rusic";
+# Then use: inputs.rusic.packages.${system}.default
+```
 
-* **Rust**: Ensure you have the latest stable Rust installed. Install Rust
-* **Node.js**: Required for Tailwind CSS processing. Install Node.js
-* **dioxus-cli**: You can install dioxus-cli with this command `cargo install --locked dioxus-cli` (this will take a bit)
-* **openssl, xdotool, glib, libsoup3**: (i dont know about what they are equal in another distros sorry, check flake.nix for all packages or just listen rust compiler for missing stuff .d)
+### Ubuntu / Debian
 
-### Quick Start
+```bash
+# Install dependencies
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev libxdo-dev libssl-dev pkg-config nodejs npm
 
-Install dependencies:
-`npm i`
+# Install Dioxus CLI
+cargo install dioxus-cli
 
-Run the application (dev):
-Use the provided Makefile to handle CSS generation and run the app `make run`
-or for better experience you can use `dx serve` for development
+# Clone and install
+git clone https://github.com/temidaradev/rusic
+cd rusic
+npm install
+make install
+```
 
-For building the app use `dx build --release` command and you will probably be able to run the executable in the printed location
+### Arch Linux
 
-### Cache
+```bash
+# Install dependencies
+sudo pacman -S webkit2gtk-4.1 gtk3 alsa-lib xdotool openssl pkg-config nodejs npm rust
 
-Rusic stores its local database, configuration files, and cached album artwork in your system's cache directory (typically `~/.cache/rusic` on macOS and Linux).
+# Install Dioxus CLI
+cargo install dioxus-cli
 
-## What did i use to build this?
+# Clone and install
+git clone https://github.com/temidaradev/rusic
+cd rusic
+npm install
+make install
+```
 
-- **Dioxus**: For the cross-platform user interface.
-- **Rodio**: For audio playback.
-- **Lofty**: For reading audio metadata tags.
-- **TailwindCSS**: For styling the application.
+### Fedora
+
+```bash
+# Install dependencies
+sudo dnf install webkit2gtk4.1-devel gtk3-devel alsa-lib-devel libxdo-devel openssl-devel pkg-config nodejs npm rust cargo
+
+# Install Dioxus CLI
+cargo install dioxus-cli
+
+# Clone and install
+git clone https://github.com/temidaradev/rusic
+cd rusic
+npm install
+make install
+```
+
+After installation, you can:
+- Run `rusic` from terminal (if `~/.local/bin` is in your PATH)
+- Find "Rusic" in your app launcher
+
+To uninstall: `make uninstall`
+
+## Development
+
+```bash
+# Clone
+git clone https://github.com/temidaradev/rusic
+cd rusic
+
+# NixOS: Enter dev shell
+nix develop
+
+# Install npm deps
+npm install
+
+# Run in dev mode
+dx serve
+```
+
+## Cache
+
+Rusic stores its local database, configuration files, and cached album artwork in your system's cache directory (typically `~/.cache/rusic`).
+
+## Built With
+
+- **Dioxus**: Cross-platform UI framework
+- **Rodio**: Audio playback
+- **Lofty**: Audio metadata parsing
+- **TailwindCSS**: Styling

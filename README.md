@@ -39,11 +39,12 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev libxdo-dev li
 # Install Dioxus CLI
 cargo install dioxus-cli
 
-# Clone and install
+# Build and install
 git clone https://github.com/temidaradev/rusic
 cd rusic
 npm install
-make install
+make build
+# Binary is at: target/dx/rusic/release/linux/app/rusic
 ```
 
 ### Arch Linux
@@ -55,11 +56,12 @@ sudo pacman -S webkit2gtk-4.1 gtk3 alsa-lib xdotool openssl pkg-config nodejs np
 # Install Dioxus CLI
 cargo install dioxus-cli
 
-# Clone and install
+# Build
 git clone https://github.com/temidaradev/rusic
 cd rusic
 npm install
-make install
+make build
+# Binary is at: target/dx/rusic/release/linux/app/rusic
 ```
 
 ### Fedora
@@ -71,18 +73,13 @@ sudo dnf install webkit2gtk4.1-devel gtk3-devel alsa-lib-devel libxdo-devel open
 # Install Dioxus CLI
 cargo install dioxus-cli
 
-# Clone and install
+# Build
 git clone https://github.com/temidaradev/rusic
 cd rusic
 npm install
-make install
+make build
+# Binary is at: target/dx/rusic/release/linux/app/rusic
 ```
-
-After installation, you can:
-- Run `rusic` from terminal (if `~/.local/bin` is in your PATH)
-- Find "Rusic" in your app launcher
-
-To uninstall: `make uninstall`
 
 ## Development
 

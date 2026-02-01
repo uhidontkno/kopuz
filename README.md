@@ -18,9 +18,7 @@ Rusic allows you to scan your local directories for audio files, automatically o
 
 ## Installation
 
-### 🚀 Quick Install (Recommended)
-
-**One-Command Install** - works on any Linux distro:
+The easiest way to get Rusic running on Linux is the install script. It handles dependencies, builds the app, and adds it to your application menu automatically.
 
 ```bash
 git clone https://github.com/temidaradev/rusic
@@ -29,96 +27,35 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Or with Make:
-
+**Note:** If `~/.local/bin` isn't in your PATH, you might need to add it to your `.zshrc` or `.bashrc`:
 ```bash
-git clone https://github.com/temidaradev/rusic
-cd rusic
-make install
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-This will:
+For mac you can just install the dmg file from releases
 
-- Build the application
-- Install it to `~/.local/bin`
-- Create a desktop icon automatically
-- Add Rusic to your application menu
+## Features
 
-**Alternative: Download AppImage** from [Releases](https://github.com/temidaradev/rusic/releases)
-
-```bash
-chmod +x Rusic-x86_64.AppImage
-./Rusic-x86_64.AppImage
-```
-
-### 📦 Other Installation Methods
-
-<details>
-<summary><b>NixOS / Nix</b></summary>
-
-```bash
-nix run github:temidaradev/rusic
-```
-
-Or add to your flake:
-
-```nix
-inputs.rusic.url = "github:temidaradev/rusic";
-# Then use: inputs.rusic.packages.${system}.default
-```
-
-</details>
-
-<details>
-<summary><b>Build from Source</b></summary>
-
-**One-command build** (auto-installs dependencies):
-
-```bash
-git clone https://github.com/temidaradev/rusic
-cd rusic
-chmod +x build.sh
-./build.sh
-```
-
-The script automatically detects your distro (Ubuntu, Arch, Fedora, etc.) and installs dependencies.
-
-**Manual build** (if you already have dependencies):
-
-```bash
-./build.sh --skip-deps
-```
-
-**Binary location:** `target/dx/rusic/release/linux/app/rusic`
-
-</details>
-
-_Note: If the application fails to start on Ubuntu 22.04+, install libfuse2: `sudo apt install libfuse2`_
+- **Blazing fast**: Built with Rust, so it doesn't eat your RAM like Electron players do.
+- **Library Management**: Scans your folders and organizes music by artist and album automatically.
+- **Integrated**: Works with your system media controls and "Now Playing" widgets.
+- **Clean UI**: Modern interface with Tailwind CSS and Dioxus.
 
 ## Development
 
+If you want to hack on it:
+
 ```bash
-# Clone
-git clone https://github.com/temidaradev/rusic
-cd rusic
-
-# NixOS: Enter dev shell
-nix develop
-
-# Install npm deps
+# Install dependencies
 npm install
 
 # Run in dev mode
 dx serve
 ```
 
-## Cache
+## Tech Stack
 
-Rusic stores its local database, configuration files, and cached album artwork in your system's cache directory (typically `~/.cache/rusic`).
-
-## Built With
-
-- **Dioxus**: Cross-platform UI framework
+- **Dioxus**: UI Framework
 - **Rodio**: Audio playback
-- **Lofty**: Audio metadata parsing
-- **TailwindCSS**: Styling
+- **Lofty**: Metadata parsing
+- **TailwindCSS**: All the styling

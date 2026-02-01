@@ -81,6 +81,27 @@ make build
 # Binary is at: target/dx/rusic/release/linux/app/rusic
 ```
 
+### AppImage (Portable)
+
+1. **Download** `Rusic-x86_64.AppImage` from [Releases](https://github.com/temidaradev/rusic/releases).
+2. **Run**:
+   ```bash
+   chmod +x Rusic-x86_64.AppImage
+   ./Rusic-x86_64.AppImage
+   ```
+
+### Desktop Installation
+To add Rusic to your application menu:
+
+1. **Download** `scripts/install_appimage.sh` and place it in the same folder as the AppImage.
+2. **Install**:
+   ```bash
+   chmod +x install_appimage.sh
+   ./install_appimage.sh
+   ```
+
+*Note: If the application fails to start on Ubuntu 22.04+, install libfuse2: `sudo apt install libfuse2`*
+
 ## Development
 
 ```bash

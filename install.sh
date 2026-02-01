@@ -29,7 +29,7 @@ install_deps() {
             ;;
         fedora|rhel|centos)
             sudo dnf install -y curl wget gcc gcc-c++ openssl-devel pkg-config \
-                alsa-lib-devel gtk3-devel webkit2gtk3-devel libappindicator-gtk3-devel \
+                alsa-lib-devel gtk3-devel webkit2gtk4.1-devel libappindicator-gtk3-devel \
                 librsvg2-devel fuse nodejs npm
             ;;
         arch|manjaro)
@@ -81,6 +81,9 @@ ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR"
 
+echo "Installing node dependencies..."
+npm install || exit 1
+
 echo "Building..."
 make build || exit 1
 
@@ -89,6 +92,7 @@ APP_DIR="target/dx/rusic/release/linux/app"
 
 echo "Installing to $INSTALL_DIR..."
 rm -rf "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR"
 cp -r "$APP_DIR"/* "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/rusic"
 

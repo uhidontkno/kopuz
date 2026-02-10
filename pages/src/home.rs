@@ -311,41 +311,6 @@ pub fn Home(
         artist_list
     });
 
-    let jellyfin_recent = use_memo(move || {
-        let lib = library.read();
-        lib.jellyfin_tracks
-            .iter()
-            .take(10)
-            .map(|t| {
-                let cover_url = if let Some(server) = &config.read().server {
-                    let path_str = t.path.to_string_lossy();
-                    let parts: Vec<&str> = path_str.split(':').collect();
-                    if parts.len() >= 2 {
-                        let id = parts[1];
-                        let mut url = format!("{}/Items/{}/Images/Primary", server.url, id);
-                        let mut params = Vec::new();
-                        if parts.len() >= 3 {
-                            params.push(format!("tag={}", parts[2]));
-                        }
-                        if let Some(token) = &server.access_token {
-                            params.push(format!("api_key={}", token));
-                        }
-                        if !params.is_empty() {
-                            url.push('?');
-                            url.push_str(&params.join("&"));
-                        }
-                        Some(url)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                (t.clone(), cover_url)
-            })
-            .collect::<Vec<_>>()
-    });
-
     let scroll_container = move |id: &str, direction: i32| {
         let script = format!(
             "document.getElementById('{}').scrollBy({{ left: {}, behavior: 'smooth' }})",
@@ -362,7 +327,7 @@ pub fn Home(
             if is_jellyfin {
                 section {
                     div { class: "flex items-center justify-between mb-4",
-                        h2 { class: "text-2xl font-bold text-white", "Jellyfin Artists" }
+                        h2 { class: "text-2xl font-bold text-white", "Artists" }
                         div { class: "flex gap-2",
                             button {
                                 class: "w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-colors",
@@ -444,43 +409,6 @@ pub fn Home(
                     }
                 }
 
-                section {
-                    div { class: "flex items-center justify-between mb-4",
-                         h2 { class: "text-2xl font-bold text-white", "Recent Tracks" }
-                         div { class: "flex gap-2",
-                            button {
-                                class: "w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-colors",
-                                onclick: move |_| scroll_container("jelly-recent-scroll", -1),
-                                i { class: "fa-solid fa-chevron-left" }
-                            }
-                            button {
-                                class: "w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-colors",
-                                onclick: move |_| scroll_container("jelly-recent-scroll", 1),
-                                i { class: "fa-solid fa-chevron-right" }
-                            }
-                        }
-                    }
-                    div {
-                        id: "jelly-recent-scroll",
-                        class: "flex overflow-x-auto gap-6 pb-4 scrollbar-hide scroll-smooth",
-                        for (track, cover_url) in jellyfin_recent() {
-                            div {
-                               class: "flex-none w-48 group cursor-pointer",
-                               div { class: "w-48 h-48 rounded-md bg-stone-800 mb-4 overflow-hidden shadow-lg relative",
-                                    if let Some(url) = cover_url {
-                                        img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" }
-                                    } else {
-                                         div { class: "w-full h-full flex items-center justify-center",
-                                            i { class: "fa-solid fa-music text-4xl text-white/20" }
-                                         }
-                                    }
-                               }
-                               h3 { class: "text-white font-medium truncate", "{track.title}" }
-                               p { class: "text-sm text-stone-400 truncate", "{track.artist}" }
-                            }
-                        }
-                    }
-                }
             } else {
                 section {
                     div { class: "flex items-center justify-between mb-4",

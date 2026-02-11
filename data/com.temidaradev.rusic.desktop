@@ -5,6 +5,6 @@ Exec=rusic
 Icon=com.temidaradev.rusic
 Terminal=false
 Type=Application
-Categories=AudioVideo;Audio;Player;Music;Multimedia;
+Categories=AudioVideo;Audio;Player;Music;
 Keywords=Music;Player;
 StartupWMClass=rusic

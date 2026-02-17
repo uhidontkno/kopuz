@@ -8,6 +8,7 @@ use objc2::AllocAnyThread;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2_app_kit::NSImage;
 use objc2_foundation::{NSCopying, NSDictionary, NSMutableDictionary, NSNumber, NSString};
+use objc2_avf_audio::{AVAudioSession, AVAudioSessionCategoryPlayback};
 use objc2_media_player::{
     MPMediaItemArtwork, MPMediaItemPropertyAlbumTitle, MPMediaItemPropertyArtist,
     MPMediaItemPropertyArtwork, MPMediaItemPropertyPlaybackDuration, MPMediaItemPropertyTitle,
@@ -16,11 +17,29 @@ use objc2_media_player::{
     MPRemoteCommandHandlerStatus,
 };
 
-// NSActivityOptions value for NSActivityUserInitiated
-// 0x00FFFFFF (NSActivityUserInitiated) includes NSActivityBackgroun (0x000000FF)
-// We want to be very explicit about preventing suspension.
-// NSActivityBackground (0x000000FF) | NSActivityIdleSystemSleepDisabled (1 << 20) | NSActivitySuddenTerminationDisabled (1 << 14) | NSActivityAutomaticTerminationDisabled (1 << 15)
-const NS_ACTIVITY_BACKGROUND_PREVENT_SUSPENSION: u64 = 0x000000FF | (1 << 20) | (1 << 14) | (1 << 15);
+// CoreFoundation FFI — CFRunLoopWakeUp is the only reliable way to wake
+// the Tao/Dioxus event loop from a background thread on macOS.
+unsafe extern "C" {
+    fn CFRunLoopGetMain() -> *mut std::ffi::c_void;
+    fn CFRunLoopWakeUp(rl: *mut std::ffi::c_void);
+}
+
+/// Wake the main CFRunLoop so the Dioxus event loop polls pending tokio tasks.
+/// Thread-safe per Apple docs. Call this after sending events to the channel.
+pub fn wake_run_loop() {
+    unsafe { CFRunLoopWakeUp(CFRunLoopGetMain()) }
+}
+
+// NSActivityOptions values
+// NSActivityUserInitiated = 0x00FFFFFF
+// NSActivityLatencyCritical = 0xFF00000000
+// NSActivityIdleSystemSleepDisabled = 1 << 20
+// NSActivitySuddenTerminationDisabled = 1 << 14
+// NSActivityAutomaticTerminationDisabled = 1 << 15
+//
+// We combine these to be extremely explicit about preventing suspension.
+// Note: UserInitiated (0x00FFFFFF) includes IdleSystemSleepDisabled.
+const NS_ACTIVITY_PREVENT_SUSPENSION: u64 = 0x00FFFFFF | 0xFF00000000 | (1 << 14) | (1 << 15);
 
 #[derive(Debug)]
 pub enum SystemEvent {
@@ -71,8 +90,19 @@ pub fn init() {
     ONCE.get_or_init(|| unsafe {
         let process_info = objc2_foundation::NSProcessInfo::processInfo();
         let reason = NSString::from_str("Music Playback Quality of Service");
-        let activity: *mut AnyObject = objc2::msg_send![&process_info, beginActivityWithOptions: NS_ACTIVITY_BACKGROUND_PREVENT_SUSPENSION, reason: &*reason];
+        let activity: *mut AnyObject = objc2::msg_send![&process_info, beginActivityWithOptions: NS_ACTIVITY_PREVENT_SUSPENSION, reason: &*reason];
         
+        // Configure AVAudioSession for background playback
+        let session = AVAudioSession::sharedInstance();
+        if let Err(e) = session.setCategory_error(AVAudioSessionCategoryPlayback.unwrap()) {
+            eprintln!("[macos] Failed to set AVAudioSession category: {:?}", e);
+        }
+        if let Err(e) = session.setActive_error(true) {
+             eprintln!("[macos] Failed to activate AVAudioSession: {:?}", e);
+        } else {
+             println!("[macos] AVAudioSession configured for background playback");
+        }
+
         static ACTIVITY_TOKEN: OnceLock<ThreadSafeActivity> = OnceLock::new();
         if !activity.is_null() {
              let retained_activity = objc2::rc::Retained::from_raw(activity).expect("retained activity token");
@@ -85,9 +115,14 @@ pub fn init() {
         std::thread::spawn(|| {
             let mut counter = 0;
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(30));
+                std::thread::sleep(std::time::Duration::from_secs(5));
                 counter += 1;
-                println!("[macos] Background heartbeat tick: {}", counter);
+                // Wake the main run loop so Dioxus polls its tokio tasks.
+                // Without this, the event loop sleeps and use_future stops running.
+                wake_run_loop();
+                if counter % 6 == 0 {
+                    println!("[macos] Background heartbeat tick: {}", counter);
+                }
             }
         });
 
@@ -98,6 +133,7 @@ pub fn init() {
         center.playCommand().addTargetWithHandler(&RcBlock::new(
             move |_event: NonNull<MPRemoteCommandEvent>| {
                 let _ = play_tx.send(SystemEvent::Play);
+                wake_run_loop();
                 MPRemoteCommandHandlerStatus::Success
             },
         ));
@@ -106,6 +142,7 @@ pub fn init() {
         center.pauseCommand().addTargetWithHandler(&RcBlock::new(
             move |_event: NonNull<MPRemoteCommandEvent>| {
                 let _ = pause_tx.send(SystemEvent::Pause);
+                wake_run_loop();
                 MPRemoteCommandHandlerStatus::Success
             },
         ));
@@ -116,6 +153,7 @@ pub fn init() {
             .addTargetWithHandler(&RcBlock::new(
                 move |_event: NonNull<MPRemoteCommandEvent>| {
                     let _ = toggle_tx.send(SystemEvent::Toggle);
+                    wake_run_loop();
                     MPRemoteCommandHandlerStatus::Success
                 },
             ));
@@ -126,6 +164,7 @@ pub fn init() {
             .addTargetWithHandler(&RcBlock::new(
                 move |_event: NonNull<MPRemoteCommandEvent>| {
                     let _ = next_tx.send(SystemEvent::Next);
+                    wake_run_loop();
                     MPRemoteCommandHandlerStatus::Success
                 },
             ));
@@ -136,6 +175,7 @@ pub fn init() {
             .addTargetWithHandler(&RcBlock::new(
                 move |_event: NonNull<MPRemoteCommandEvent>| {
                     let _ = prev_tx.send(SystemEvent::Prev);
+                    wake_run_loop();
                     MPRemoteCommandHandlerStatus::Success
                 },
             ));

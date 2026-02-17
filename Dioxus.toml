@@ -12,6 +12,9 @@ publisher = "temidaradev"
 icon = ["assets/logo.png"]
 category = "public.app-category.music"
 
+[bundle.macos]
+info_plist_path = "rusic/Info.plist"
+
 [web.app]
 title = "rusic"
 

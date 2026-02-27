@@ -164,7 +164,9 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                             description: "Enter your MusicBrainz token",
                             control: rsx! {
                                 MusicBrainzSettings {
-                                    on_change: move |token| {
+                                    current: config.read().musicbrainz_token.clone(),
+                                    on_save: move |token: String| {
+                                        config.write().musicbrainz_token = token;
                                     },
                                 }
                             }
@@ -174,7 +176,9 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                             description: "Enter you last.fm token".to_string(),
                             control: rsx! {
                                 LastFmSettings {
-                                    on_change: move |token| {
+                                    current: config.read().lastfm_token.clone(),
+                                    on_save: move |token: String| {
+                                        config.write().lastfm_token = token;
                                     },
                                 }
                             }

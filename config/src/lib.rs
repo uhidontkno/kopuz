@@ -36,6 +36,7 @@ pub struct AppConfig {
     pub listen_counts: HashMap<String, u64>,
     #[serde(default)]
     pub musicbrainz_token: String,
+    #[serde(default)]
     pub lastfm_token: String,
 }
 

@@ -135,32 +135,54 @@ pub fn DiscordPresenceSettings(enabled: bool, on_change: EventHandler<bool>) -> 
 }
 
 #[component]
-pub fn MusicBrainzSettings(on_change: EventHandler<bool>) -> Element {
+pub fn MusicBrainzSettings(current: String, on_save: EventHandler<String>) -> Element {
+    let mut input = use_signal(move || current.clone());
+
     rsx! {
         div {
-            class: "bg-white/5 p-1 rounded-xl flex relative h-10 items-center border border-white/5 w-48",
+            class: "flex items-center gap-2 w-full max-w-xl",
             div {
-                class: "absolute h-8 bg-white/10 rounded-lg transition-all duration-300 ease-out",
+                class: "flex-1 bg-white/5 p-1 rounded-xl border border-white/5",
+                input {
+                    class: "bg-transparent w-full px-3 py-2 text-sm text-white placeholder:text-white/50 outline-none",
+                    placeholder: "Enter your MusicBrainz token",
+                    value: "{input()}",
+                    oninput: move |evt| input.set(evt.value()),
+                    r#type: "text",
+                }
             }
-            input {
-                placeholder: "Enter you MusicBrainz token",
-
-
+            button {
+                class: "text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-white/80",
+                onclick: move |_| {
+                    on_save.call(input().clone());
+                },
+                "Save"
             }
         }
     }
 }
 
 #[component]
-pub fn LastFmSettings(on_change: EventHandler<bool>) -> Element {
+pub fn LastFmSettings(current: String, on_save: EventHandler<String>) -> Element {
+    let mut input = use_signal(move || current.clone());
+
     rsx! {
-        div {
-            class: "bg-white/5 p-1 rounded-xl flex relative h-10 items-center border border-white/5 w-48",
-            div {
-                class: "absolute h-8 bg-white/10 rounded-lg transition-all duration-300 ease-out",
+        div { class: "flex items-center gap-2 w-full max-w-xl",
+            div { class: "flex-1 bg-white/5 p-1 rounded-xl border border-white/5",
+                input {
+                    class: "bg-transparent w-full px-3 py-2 text-sm text-white placeholder:text-white/50 outline-none",
+                    placeholder: "Enter your last.fm token",
+                    value: "{input()}",
+                    oninput: move |evt| input.set(evt.value()),
+                    r#type: "text",
+                }
             }
-            input {
-                placeholder: "Enter your last.fm token",
+            button {
+                class: "text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 text-white/80",
+                onclick: move |_| {
+                    on_save.call(input().clone());
+                },
+                "Save"
             }
         }
     }

@@ -1,7 +1,8 @@
 use config::AppConfig;
-use dioxus::prelude::*;
+use dioxus::{logger::tracing, prelude::*};
 use player::player::{NowPlayingMeta, Player};
 use reader::{Library, Track};
+use scrobble;
 use utils;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -193,6 +194,53 @@ impl PlayerController {
                         }
 
                         self.is_playing.set(true);
+
+                        let cfg_signal = self.config;
+                        let play_generation_signal = self.play_generation;
+                        let gen_snapshot = current_gen;
+                        let scrobble_track = track.clone();
+
+                        let duration_secs = scrobble_track.duration;
+                        let threshold_secs = std::cmp::min(240, (duration_secs / 2) as u64);
+
+                        spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(threshold_secs))
+                                .await;
+                            if *play_generation_signal.read() != gen_snapshot {
+                                return;
+                            }
+
+                            let token_raw = cfg_signal.read().musicbrainz_token.clone();
+                            if token_raw.is_empty() {
+                                return;
+                            }
+
+                            let auth_header_value = if token_raw.contains(' ') {
+                                token_raw
+                            } else {
+                                format!("Token {}", token_raw)
+                            };
+
+                            let listen = scrobble::musicbrainz::make_listen(
+                                &scrobble_track.artist,
+                                &scrobble_track.title,
+                                Some(&scrobble_track.album),
+                            );
+
+                            match scrobble::musicbrainz::submit_listens(
+                                &auth_header_value,
+                                vec![listen],
+                            )
+                            .await
+                            {
+                                Ok(_) => tracing::info!(
+                                    "Scrobbled: {} - {}",
+                                    scrobble_track.artist,
+                                    scrobble_track.title
+                                ),
+                                Err(e) => tracing::warn!("Scrobble failed: {}", e),
+                            }
+                        });
                     }
                 }
             }

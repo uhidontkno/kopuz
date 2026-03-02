@@ -10,6 +10,8 @@ pub fn Home(
     library: Signal<Library>,
     playlist_store: Signal<PlaylistStore>,
     on_select_album: EventHandler<String>,
+    on_play_album: EventHandler<String>,
+    on_select_playlist: EventHandler<String>,
     on_search_artist: EventHandler<String>,
 ) -> Element {
     let config = use_context::<Signal<AppConfig>>();
@@ -214,13 +216,45 @@ pub fn Home(
 
     let recent_playlists = use_memo(move || {
         let store = playlist_store.read();
-        store
-            .playlists
-            .iter()
-            .rev()
-            .take(10)
-            .cloned()
-            .collect::<Vec<_>>()
+        let is_jelly = config.read().active_source == MusicSource::Jellyfin;
+        if is_jelly {
+            store
+                .jellyfin_playlists
+                .iter()
+                .rev()
+                .take(10)
+                .cloned()
+                .map(|p| {
+                    (
+                        p.id,
+                        p.name,
+                        p.tracks.len(),
+                        p.tracks.first().cloned(),
+                        true,
+                    )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            store
+                .playlists
+                .iter()
+                .rev()
+                .take(10)
+                .cloned()
+                .map(|p| {
+                    (
+                        p.id,
+                        p.name,
+                        p.tracks.len(),
+                        p.tracks
+                            .first()
+                            .and_then(|p| p.to_str())
+                            .map(|s| s.to_string()),
+                        false,
+                    )
+                })
+                .collect::<Vec<_>>()
+        }
     });
 
     let artists = use_memo(move || {
@@ -391,7 +425,7 @@ pub fn Home(
                                         class: "flex items-center gap-3 bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-white/90 hover:scale-105 active:scale-95 transition-all w-fit shadow-xl",
                                         onclick: {
                                             let id = album_id.clone();
-                                            move |_| on_select_album.call(id.clone())
+                                            move |_| on_play_album.call(id.clone())
                                         },
                                         i { class: "fa-solid fa-play text-[10px]" }
                                         span { class: "text-sm", "Start Listening" }
@@ -423,14 +457,20 @@ pub fn Home(
                                 }
                                 h1 { class: "text-3xl md:text-5xl font-black text-white mb-4 leading-tight max-w-xl break-words", "{album.title}" }
                                 p { class: "text-base md:text-lg text-white/60 mb-8 font-medium line-clamp-1 max-w-md", "By {album.artist}" }
-                                button {
-                                    class: "flex items-center gap-3 bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-indigo-500 hover:text-white hover:scale-105 transition-all w-fit shadow-lg shadow-black/20",
-                                    onclick: {
-                                        let id = album.id.clone();
-                                        move |_| on_select_album.call(id.clone())
-                                    },
-                                    i { class: "fa-solid fa-play text-[10px]" }
-                                    span { class: "text-sm", "Play Album" }
+                                div { class: "flex items-center gap-4",
+                                    button {
+                                        class: "flex items-center gap-3 bg-white text-black px-8 py-3 rounded-full font-bold hover:bg-white/90 hover:scale-105 active:scale-95 transition-all w-fit shadow-xl",
+                                        onclick: {
+                                            let id = album.id.clone();
+                                            move |_| on_play_album.call(id.clone())
+                                        },
+                                        i { class: "fa-solid fa-play text-[10px]" }
+                                        span { class: "text-sm", "Start Listening" }
+                                    }
+                                    button {
+                                        class: "w-11 h-11 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-all",
+                                        i { class: "fa-regular fa-heart" }
+                                    }
                                 }
                             }
                         }
@@ -482,7 +522,14 @@ pub fn Home(
                                                 p { class: "text-xs text-white/50 truncate font-semibold mt-1", "{artist}" }
                                             }
                                             div { class: "opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0",
-                                                div { class: "w-8 h-8 rounded-full bg-white/10 flex items-center justify-center",
+                                                div { class: "w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors",
+                                                    onclick: {
+                                                        let id = album_id.clone();
+                                                        move |evt| {
+                                                            evt.stop_propagation();
+                                                            on_play_album.call(id.clone());
+                                                        }
+                                                    },
                                                     i { class: "fa-solid fa-play text-white/80 text-xs" }
                                                 }
                                             }
@@ -578,6 +625,13 @@ pub fn Home(
                                         div { class: "absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" }
 
                                         div { class: "absolute right-3 bottom-3 w-10 h-10 bg-white text-black rounded-full shadow-2xl flex items-center justify-center translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300",
+                                            onclick: {
+                                                let id = album_id.clone();
+                                                move |evt| {
+                                                    evt.stop_propagation();
+                                                    on_play_album.call(id.clone());
+                                                }
+                                            },
                                             i { class: "fa-solid fa-play ml-0.5 text-sm" }
                                         }
                                    }
@@ -623,7 +677,16 @@ pub fn Home(
                                                 p { class: "text-xs text-white/50 truncate font-semibold mt-1", "{album.artist}" }
                                             }
                                             div { class: "opacity-0 group-hover:opacity-100 transition-all duration-300",
-                                                i { class: "fa-solid fa-play text-white/80 text-xs" }
+                                                div { class: "w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors",
+                                                    onclick: {
+                                                        let id = album.id.clone();
+                                                        move |evt| {
+                                                            evt.stop_propagation();
+                                                            on_play_album.call(id.clone());
+                                                        }
+                                                    },
+                                                    i { class: "fa-solid fa-play text-white/80 text-xs" }
+                                                }
                                             }
                                         }
                                     }
@@ -663,7 +726,7 @@ pub fn Home(
                                     div { class: "aspect-square rounded-full bg-stone-800/80 mb-4 overflow-hidden shadow-lg transition-all duration-300 relative mx-auto",
                                         if let Some(path) = cover_path {
                                             if let Some(url) = utils::format_artwork_url(Some(&path)) {
-                                                img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" }
+                                                img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" }
                                             }
                                         } else {
                                              div { class: "w-full h-full flex items-center justify-center border border-white/5 rounded-full",
@@ -717,6 +780,13 @@ pub fn Home(
                                         div { class: "absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" }
 
                                         div { class: "absolute right-3 bottom-3 w-10 h-10 bg-white text-black rounded-full shadow-lg flex items-center justify-center translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300",
+                                            onclick: {
+                                                let id = album.id.clone();
+                                                move |evt| {
+                                                    evt.stop_propagation();
+                                                    on_play_album.call(id.clone());
+                                                }
+                                            },
                                             i { class: "fa-solid fa-play text-xs ml-0.5" }
                                         }
                                    }
@@ -733,8 +803,7 @@ pub fn Home(
                 section { class: "mt-16",
                     div { class: "flex items-center justify-between mb-6",
                          div {
-                            h2 { class: "text-2xl font-bold text-white tracking-tight", "Made For You" }
-                            p { class: "text-white/40 text-sm mt-1", "Your custom collections" }
+                            h2 { class: "text-2xl font-bold text-white tracking-tight", "Playlists" }
                          }
                          div { class: "flex gap-2",
                             button {
@@ -752,23 +821,71 @@ pub fn Home(
                     div {
                         id: "playlists-scroll",
                         class: "flex overflow-x-auto gap-6 pb-6 pt-2 scrollbar-hide scroll-smooth -mx-2 px-2",
-                        for playlist in recent_playlists() {
-                            div {
-                               class: "flex-none w-40 md:w-48 group cursor-pointer",
-                               div { class: "aspect-square rounded-2xl bg-white/5 mb-4 overflow-hidden shadow-lg hover:shadow-indigo-500/10 transition-all duration-500 relative",
-                                    div { class: "w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-600/20 to-purple-600/20 backdrop-blur-sm group-hover:scale-110 transition-transform duration-700",
-                                        i { class: "fa-solid fa-music text-5xl opacity-40 text-white" }
+                        for (id, name, track_count, first_track, is_jelly) in recent_playlists() {
+                            {
+                                let cover_url = if let Some(track_path_or_id) = first_track {
+                                    let lib = library.peek();
+                                    if is_jelly {
+                                        lib.jellyfin_tracks.iter()
+                                            .find(|t| t.path.to_string_lossy().contains(&track_path_or_id))
+                                            .and_then(|t| {
+                                                let conf = config.peek();
+                                                if let Some(server) = &conf.server {
+                                                    let path_str = t.path.to_string_lossy();
+                                                    let parts: Vec<&str> = path_str.split(':').collect();
+                                                    if parts.len() >= 2 {
+                                                        let id = parts[1];
+                                                        let mut url = format!("{}/Items/{}/Images/Primary", server.url, id);
+                                                        if let Some(token) = &server.access_token {
+                                                            url.push_str(&format!("?api_key={}", token));
+                                                        }
+                                                        Some(url)
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                    } else {
+                                        lib.tracks.iter()
+                                            .find(|t| t.path.to_string_lossy() == track_path_or_id)
+                                            .and_then(|t| {
+                                                lib.albums.iter()
+                                                    .find(|a| a.id == t.album_id)
+                                                    .and_then(|a| a.cover_path.as_ref())
+                                                    .and_then(|cp| utils::format_artwork_url(Some(cp)))
+                                            })
                                     }
-                                    div { class: "absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" }
-
-                                    div { class: "absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300",
-                                        div { class: "w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-2xl",
-                                            i { class: "fa-solid fa-play text-black ml-1" }
+                                } else {
+                                    None
+                                };
+                                 rsx! {
+                                     div {
+                                        class: "flex-none w-40 md:w-48 group cursor-pointer",
+                                        onclick: {
+                                            let id = id.clone();
+                                            move |_| on_select_playlist.call(id.clone())
+                                        },
+                                        div { class: "aspect-square rounded-2xl bg-white/5 mb-4 overflow-hidden shadow-lg hover:shadow-indigo-500/10 transition-all duration-500 relative",
+                                             if let Some(url) = cover_url {
+                                                 img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" }
+                                             } else {
+                                                 div { class: "w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-600/20 to-purple-600/20 backdrop-blur-sm group-hover:scale-110 transition-transform duration-700",
+                                                     i { class: "fa-solid fa-music text-5xl opacity-40 text-white" }
+                                                 }
+                                             }
+                                             div { class: "absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" }
                                         }
-                                    }
-                               }
-                               h3 { class: "text-white font-bold truncate text-sm md:text-base px-1 group-hover:text-indigo-400 transition-colors", "{playlist.name}" }
-                               p { class: "text-xs md:text-sm text-white/40 truncate px-1 font-semibold mt-1", "{playlist.tracks.len()} tracks" }
+                                        div {
+                                            h3 { class: "text-white font-bold truncate text-sm md:text-base px-1 group-hover:text-indigo-400 transition-colors", "{name}" }
+                                            p { class: "text-xs md:text-sm text-white/40 truncate px-1 font-semibold mt-1",
+                                                 if is_jelly { "Jellyfin • " }
+                                                 "{track_count} tracks"
+                                            }
+                                        }
+                                     }
+                                 }
                             }
                         }
                     }

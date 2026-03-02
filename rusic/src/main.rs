@@ -144,6 +144,7 @@ fn App() -> Element {
     provide_context(presence.clone());
 
     let mut selected_album_id = use_signal(String::new);
+    let mut selected_playlist_id = use_signal(|| None::<String>);
     let mut selected_artist_name = use_signal(String::new);
     let search_query = use_signal(String::new);
 
@@ -196,7 +197,7 @@ fn App() -> Element {
         });
     });
 
-    let queue = use_signal(Vec::<reader::Track>::new);
+    let mut queue = use_signal(Vec::<reader::Track>::new);
     let current_queue_index = use_signal(|| 0usize);
 
     let mut ctrl = hooks::use_player_controller(
@@ -264,11 +265,40 @@ fn App() -> Element {
                             pages::home::Home {
                                 library,
                                 playlist_store,
-                                on_select_album: move |id| {
+                                on_select_album: move |id: String| {
                                     selected_album_id.set(id);
                                     current_route.set(Route::Album);
                                 },
-                                on_search_artist: move |artist| {
+                                on_play_album: move |id: String| {
+                                    selected_album_id.set(id.clone());
+
+                                    let lib = library.peek();
+                                    let is_jelly = id.starts_with("jellyfin:");
+                                    let mut tracks: Vec<reader::Track> = if is_jelly {
+                                        lib.jellyfin_tracks.iter().filter(|t| t.album_id == id).cloned().collect()
+                                    } else {
+                                        lib.tracks.iter().filter(|t| t.album_id == id).cloned().collect()
+                                    };
+
+                                    if !tracks.is_empty() {
+                                        tracks.sort_by(|a, b| {
+                                            let disc_cmp = a.disc_number.unwrap_or(1).cmp(&b.disc_number.unwrap_or(1));
+                                            if disc_cmp == std::cmp::Ordering::Equal {
+                                                a.track_number.unwrap_or(0).cmp(&b.track_number.unwrap_or(0))
+                                            } else {
+                                                disc_cmp
+                                            }
+                                        });
+                                        queue.set(tracks);
+                                        ctrl.play_track(0);
+                                    }
+                                    current_route.set(Route::Album);
+                                },
+                                on_select_playlist: move |id: String| {
+                                    selected_playlist_id.set(Some(id));
+                                    current_route.set(Route::Playlists);
+                                },
+                                on_search_artist: move |artist: String| {
                                     selected_artist_name.set(artist);
                                     current_route.set(Route::Artist);
                                 }
@@ -365,6 +395,7 @@ fn App() -> Element {
                                 current_song_progress: current_song_progress,
                                 queue: queue,
                                 current_queue_index: current_queue_index,
+                                selected_playlist_id: selected_playlist_id.clone(),
                             }
                         },
                         Route::Logs => rsx! {

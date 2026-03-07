@@ -171,8 +171,6 @@ pub fn use_player_task(ctrl: PlayerController) {
                         let progress = pos.as_secs();
                         let cover = ctrl.current_song_cover_url.read().clone();
 
-                        // Build a key that uniquely identifies the current song so we know
-                        // when to kick off a new Cover Art Archive lookup.
                         let song_key = format!("{}|{}|{}", title, artist, album);
 
                         if discord_enabled && song_key != *discord_cover_resolving_for.peek() {
@@ -181,10 +179,8 @@ pub fn use_player_task(ctrl: PlayerController) {
                             discord_cover_sent.set(false);
 
                             if cover.starts_with("http") {
-                                // Jellyfin / remote URL – use it verbatim.
                                 discord_cover_url.set(Some(cover.clone()));
                             } else {
-                                // Local file – resolve via MusicBrainz + Cover Art Archive.
                                 let mbid = {
                                     let q = ctrl.queue.read();
                                     let idx = *ctrl.current_queue_index.read();
@@ -213,8 +209,6 @@ pub fn use_player_task(ctrl: PlayerController) {
                             let resumed = !*was_playing.peek();
                             let toggled_on = !last_discord_enabled;
 
-                            // Check if the async cover art lookup finished since we last
-                            // sent the activity (so we can update the image).
                             let cover_just_resolved =
                                 discord_cover_url.peek().is_some() && !*discord_cover_sent.peek();
 
@@ -234,8 +228,6 @@ pub fn use_player_task(ctrl: PlayerController) {
                                     &title, &artist, &album, progress, duration, cover_ref,
                                 );
 
-                                // If we had a resolved URL, mark it as sent so we don't
-                                // keep re-sending on every tick.
                                 if resolved.is_some() {
                                     discord_cover_sent.set(true);
                                 }

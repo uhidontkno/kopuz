@@ -172,7 +172,7 @@ pub fn MusicBrainzSettings(current: String, on_save: EventHandler<String>) -> El
                         input.set(evt.value());
                         on_save.call(evt.value());
                     },
-                    r#type: "text",
+                    r#type: "password",
                 }
             }
         }

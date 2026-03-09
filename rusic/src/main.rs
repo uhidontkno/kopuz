@@ -5,6 +5,7 @@ use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 use dioxus::prelude::*;
 use discord_presence::Presence;
 use player::player::Player;
+use reader::FavoritesStore;
 use rusic_route::Route;
 use std::{borrow::Cow, sync::Arc};
 
@@ -119,6 +120,9 @@ fn App() -> Element {
     let playlist_path = use_memo(move || cache_dir().join("playlists.json"));
     let playlist_store =
         use_signal(|| reader::PlaylistStore::load(&playlist_path()).unwrap_or_default());
+    let favorites_path = use_memo(move || cache_dir().join("favorites.json"));
+    let favorites_store =
+        use_signal(|| FavoritesStore::load(&favorites_path()).unwrap_or_default());
     let cover_cache = use_memo(move || cache_dir().join("covers"));
     let _ = std::fs::create_dir_all(cover_cache());
     let mut trigger_rescan = use_signal(|| 0);
@@ -280,6 +284,7 @@ fn App() -> Element {
                             pages::home::Home {
                                 library,
                                 playlist_store,
+                                favorites_store,
                                 on_select_album: move |id: String| {
                                     selected_album_id.set(id);
                                     current_route.set(Route::Album);
@@ -395,6 +400,23 @@ fn App() -> Element {
                                 }
                             }
                         },
+                        Route::Favorites => rsx! {
+                            pages::favorites::FavoritesPage {
+                                favorites_store,
+                                library,
+                                config,
+                                player,
+                                is_playing,
+                                current_playing,
+                                current_song_cover_url,
+                                current_song_title,
+                                current_song_artist,
+                                current_song_duration,
+                                current_song_progress,
+                                queue,
+                                current_queue_index,
+                            }
+                        },
                         Route::Playlists => rsx! {
                             pages::playlists::PlaylistsPage {
                                 playlist_store: playlist_store,
@@ -442,6 +464,8 @@ fn App() -> Element {
             }
             Bottombar {
                 library: library,
+                favorites_store,
+                config,
                 current_song_cover_url: current_song_cover_url,
                 current_song_title: current_song_title,
                 current_song_artist: current_song_artist,

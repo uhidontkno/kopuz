@@ -75,17 +75,7 @@
 
         packages.default = pkgs.callPackage ./nix/package.nix {
           src = filteredSrc;
-          extraBuildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin (
-            with pkgs.darwin.apple_sdk.frameworks; [
-              WebKit
-              AppKit
-              CoreAudio
-              AVFoundation
-              CoreFoundation
-              Security
-              SystemConfiguration
-            ]
-          );
+          extraBuildInputs = [];
         };
 
         apps.default = {

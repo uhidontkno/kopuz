@@ -14,3 +14,4 @@ pub mod showcase;
 pub mod sidebar;
 pub mod stat_card;
 pub mod track_row;
+pub mod playlist_popups;

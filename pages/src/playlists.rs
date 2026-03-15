@@ -3,6 +3,7 @@ use config::{AppConfig, MusicSource};
 use dioxus::prelude::*;
 use player::player;
 use reader::{Library, PlaylistStore};
+use components::playlist_popups::AddPlaylistPopup;
 
 use crate::jellyfin::playlists::JellyfinPlaylists;
 use crate::local::playlists::LocalPlaylists;
@@ -25,6 +26,22 @@ pub fn PlaylistsPage(
     mut selected_playlist_id: Signal<Option<String>>,
 ) -> Element {
     let is_jellyfin = config.read().active_source == MusicSource::Jellyfin;
+
+    let mut show_add_playlist = use_signal(|| false);
+    let mut playlist_name = use_signal(|| String::new());
+    let mut error = use_signal(|| Option::<String>::None);
+    
+    let handle_add_playlist = move |_| {
+        let mut store = playlist_store.write();
+        store.playlists.push(reader::models::Playlist {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: playlist_name(),
+            tracks: Vec::new(),
+        });
+
+        show_add_playlist.set(false);
+        playlist_name.set(String::new());
+    };
 
     let mut last_source = use_signal(|| config.read().active_source.clone());
     if *last_source.read() != config.read().active_source {
@@ -57,6 +74,20 @@ pub fn PlaylistsPage(
             } else {
                 div { class: "flex items-center justify-between mb-8",
                     h1 { class: "text-3xl font-bold text-white", "Playlists" }
+                    button {
+                        class: "text-white/60 flex items-center hover:text-white transition-colors p-3 rounded-full hover:bg-white/10",
+                        title: "Add playlist",
+                        onclick: move |_| show_add_playlist.set(true),
+                        i { class: "fa-solid fa-add" }
+                    }
+                }
+                if show_add_playlist() {
+                    AddPlaylistPopup {
+                        playlist_name: playlist_name,
+                        error: error,
+                        on_close: move |_| show_add_playlist.set(false),
+                        on_save: handle_add_playlist
+                    }
                 }
 
                 if is_jellyfin {

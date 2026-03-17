@@ -3,11 +3,13 @@ use dioxus::document::eval;
 use dioxus::prelude::*;
 use hooks::use_player_controller::PlayerController;
 use reader::Library;
+use serde_json::Value;
 
 #[component]
 pub fn Rightbar(
     library: Signal<Library>,
     mut is_rightbar_open: Signal<bool>,
+    mut width: Signal<usize>,
     mut current_song_duration: Signal<u64>,
     mut current_song_progress: Signal<u64>,
     queue: Signal<Vec<reader::Track>>,
@@ -124,9 +126,52 @@ pub fn Rightbar(
         ctrl.play_track_no_history(index);
     };
 
+    let mut is_resizing = use_signal(|| false);
+
+    use_effect(move || {
+        if *is_resizing.read() {
+            spawn(async move {
+                let mut eval = eval(
+                    r#"
+                    const handleMouseMove = (e) => {
+                        dioxus.send(window.innerWidth - e.clientX);
+                    };
+                    const handleMouseUp = () => {
+                        dioxus.send("stop");
+                        window.removeEventListener('mousemove', handleMouseMove);
+                        window.removeEventListener('mouseup', handleMouseUp);
+                    };
+                    window.addEventListener('mousemove', handleMouseMove);
+                    window.addEventListener('mouseup', handleMouseUp);
+                    "#,
+                );
+
+                while let Ok(val) = eval.recv::<Value>().await {
+                    if let Some(w) = val.as_f64() {
+                        let new_width = w.max(280.0).min(600.0);
+                        width.set(new_width as usize);
+                    } else if val.as_str() == Some("stop") {
+                        is_resizing.set(false);
+                        break;
+                    }
+                }
+            });
+        }
+    });
+
     rsx! {
         div {
-            class: "w-80 bg-black/40 border-l border-white/5 flex flex-col h-full flex-shrink-0 z-10",
+            class: "bg-black/40 border-l border-white/5 flex flex-col h-full flex-shrink-0 z-10 relative",
+            style: "width: {width}px; min-width: {width}px;",
+
+            div {
+                class: "absolute -left-1 top-0 w-3 h-full cursor-col-resize hover:bg-white/20 transition-colors z-50 group/handle",
+                onmousedown: move |evt| {
+                    evt.stop_propagation();
+                    is_resizing.set(true);
+                },
+                div { class: "w-[1px] h-full bg-white/0 group-hover/handle:bg-white/10 mx-auto" }
+            }
 
             div {
                 class: "flex items-center justify-between px-4 py-4 border-b border-white/10",

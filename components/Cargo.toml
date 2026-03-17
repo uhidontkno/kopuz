@@ -17,3 +17,4 @@ hooks = { workspace = true }
 rand = { workspace = true }
 server = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
+serde_json = { workspace = true }

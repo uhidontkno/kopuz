@@ -1,4 +1,6 @@
-use components::{bottombar::Bottombar, fullscreen::Fullscreen, sidebar::Sidebar, rightbar::Rightbar};
+use components::{
+    bottombar::Bottombar, fullscreen::Fullscreen, rightbar::Rightbar, sidebar::Sidebar,
+};
 use dioxus::desktop::tao::dpi::LogicalSize;
 #[cfg(target_os = "macos")]
 use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
@@ -174,6 +176,7 @@ fn App() -> Element {
     let is_playing = use_signal(|| false);
     let is_fullscreen = use_signal(|| false);
     let mut is_rightbar_open = use_signal(|| false);
+    let mut rightbar_width = use_signal(|| 320usize);
     let mut palette = use_signal(|| Option::<Vec<utils::color::Color>>::None);
 
     use_effect(move || {
@@ -561,6 +564,7 @@ fn App() -> Element {
                 Rightbar {
                     library: library,
                     is_rightbar_open: is_rightbar_open,
+                    width: rightbar_width,
                     current_song_duration: current_song_duration,
                     current_song_progress: current_song_progress,
                     queue: queue,

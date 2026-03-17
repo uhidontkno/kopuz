@@ -24,7 +24,7 @@ pub fn LocalAlbum(
             if local_albums.is_empty() {
                 p { class: "text-slate-500", "No albums found in library." }
             } else {
-                div { class: "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6",
+                div { class: "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6",
                     for album in local_albums {
                         {
                             let id_for_nav    = album.id.clone();

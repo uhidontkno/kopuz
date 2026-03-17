@@ -86,7 +86,7 @@ pub fn SearchResults(
             if !albums.is_empty() {
                 div {
                     h2 { class: "text-xl font-semibold text-white/80 mb-4", "Albums" }
-                    div { class: "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4",
+                    div { class: "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4",
                         for (album, cover_url) in &albums {
                             div {
                                 key: "{album.id}",

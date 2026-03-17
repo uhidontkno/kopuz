@@ -432,7 +432,7 @@ pub fn JellyfinHome(
                                     h2 { class: "text-3xl font-extrabold text-white tracking-tight leading-none", "Listen Now" }
                                 }
                             }
-                            div { class: "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4",
+                            div { class: "grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-4",
                                 for (album_id, title, artist, cover_url) in jelly_list.iter().skip(1).take(8) {
                                     div {
                                         class: "flex items-center bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden pr-4",

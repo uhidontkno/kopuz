@@ -201,8 +201,26 @@ pub fn JellyfinHome(
     let jellyfin_albums_all = use_memo(move || {
         let lib = library.read();
         let conf = config.read();
-        lib.jellyfin_albums
-            .iter()
+
+        let mut albums = lib.jellyfin_albums.clone();
+        albums.sort_by(|a, b| {
+            a.title
+                .trim()
+                .to_lowercase()
+                .cmp(&b.title.trim().to_lowercase())
+        });
+
+        let mut unique_albums = Vec::new();
+        let mut seen_titles = std::collections::HashSet::new();
+
+        for album in albums {
+            if seen_titles.insert(album.title.trim().to_lowercase()) {
+                unique_albums.push(album);
+            }
+        }
+
+        unique_albums
+            .into_iter()
             .map(|album| {
                 let cover_url = if let Some(server) = &conf.server {
                     if let Some(cover_path) = &album.cover_path {

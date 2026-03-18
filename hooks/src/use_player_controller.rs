@@ -415,8 +415,8 @@ impl PlayerController {
         }
 
         if let Some(prev_idx) = self.history.with_mut(|h| h.pop()) {
-             self.play_track_no_history(prev_idx);
-             return;
+            self.play_track_no_history(prev_idx);
+            return;
         }
 
         if idx > 0 {

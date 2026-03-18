@@ -29,10 +29,14 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
         }
 
         let new_server = config::JellyfinServer::new(
-            if server_name().is_empty() { "Local Jellyfin".into() } else { server_name() },
+            if server_name().is_empty() {
+                "Local Jellyfin".into()
+            } else {
+                server_name()
+            },
             server_url(),
         );
-        
+
         config.write().server = Some(new_server);
 
         server_name.set(String::new());

@@ -15,12 +15,18 @@ pub fn LocalHome(
 ) -> Element {
     let recent_albums = use_memo(move || {
         let lib = library.read();
-        lib.albums
-            .iter()
-            .rev()
-            .take(10)
-            .cloned()
-            .collect::<Vec<_>>()
+        let mut unique_albums = Vec::new();
+        let mut seen_titles = std::collections::HashSet::new();
+        for album in lib.albums.iter().rev() {
+            let title_key = album.title.trim().to_lowercase();
+            if seen_titles.insert(title_key) {
+                unique_albums.push(album.clone());
+            }
+            if unique_albums.len() >= 10 {
+                break;
+            }
+        }
+        unique_albums
     });
 
     let recent_playlists = use_memo(move || {
@@ -63,13 +69,20 @@ pub fn LocalHome(
 
     let local_shuffled = use_memo(move || {
         let lib = library.read();
-        let mut albums = lib.albums.clone();
-        if albums.is_empty() {
+        let mut unique_albums = Vec::new();
+        let mut seen_titles = std::collections::HashSet::new();
+        for album in &lib.albums {
+            let title_key = album.title.trim().to_lowercase();
+            if seen_titles.insert(title_key) {
+                unique_albums.push(album.clone());
+            }
+        }
+        if unique_albums.is_empty() {
             return Vec::new();
         }
         let mut rng = thread_rng();
-        albums.shuffle(&mut rng);
-        albums
+        unique_albums.shuffle(&mut rng);
+        unique_albums
     });
 
     let scroll_container = move |id: &str, direction: i32| {

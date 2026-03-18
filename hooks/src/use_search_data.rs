@@ -151,7 +151,7 @@ pub fn use_search_data(
                         (a.title.to_lowercase().contains(&query)
                             || a.artist.to_lowercase().contains(&query)
                             || a.genre.to_lowercase().contains(&query))
-                            && seen_titles.insert(a.title.to_lowercase())
+                            && seen_titles.insert(a.title.trim().to_lowercase())
                     })
                     .map(|a| {
                         let cover_url = a
@@ -209,7 +209,7 @@ pub fn use_search_data(
                         (a.title.to_lowercase().contains(&query)
                             || a.artist.to_lowercase().contains(&query)
                             || a.genre.to_lowercase().contains(&query))
-                            && seen_titles.insert(a.title.to_lowercase())
+                            && seen_titles.insert(a.title.trim().to_lowercase())
                     })
                     .take(50)
                     .map(|a| {

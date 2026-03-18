@@ -9,9 +9,7 @@ pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<String> {
         let p_str = p.to_string_lossy();
 
         let abs_path = if let Some(stripped) = p_str.strip_prefix("./") {
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join(stripped)
+            std::env::current_dir().unwrap_or_default().join(stripped)
         } else {
             p.to_path_buf()
         };
@@ -33,7 +31,7 @@ pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<String> {
             // Since Windows WebView2 is such a bitch with custom protocols, I decided to instead use base64 data URLs
             // TODO: Reduce overhead.
             use std::fs;
-            
+
             if let Ok(bytes) = fs::read(&*abs_str) {
                 // Determine MIME type, TODO: expand list
                 let mime = if abs_str.ends_with(".png") {
@@ -45,7 +43,7 @@ pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<String> {
                 } else {
                     "image/jpeg"
                 };
-                
+
                 // Encode to base64
                 use base64::{Engine as _, engine::general_purpose};
                 let b64 = general_purpose::STANDARD.encode(&bytes);

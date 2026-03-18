@@ -1,29 +1,27 @@
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use windows::core::{BOOL, Ref, w};
 use windows::{
     Foundation::{TimeSpan, TypedEventHandler, Uri},
     Media::{
         MediaPlaybackStatus, MediaPlaybackType, PlaybackPositionChangeRequestedEventArgs,
-        SystemMediaTransportControls,
-        SystemMediaTransportControlsButton, SystemMediaTransportControlsButtonPressedEventArgs,
+        SystemMediaTransportControls, SystemMediaTransportControlsButton,
+        SystemMediaTransportControlsButtonPressedEventArgs,
         SystemMediaTransportControlsTimelineProperties,
     },
-    Storage::Streams::{
-        DataWriter, InMemoryRandomAccessStream, RandomAccessStreamReference,
-    },
+    Storage::Streams::{DataWriter, InMemoryRandomAccessStream, RandomAccessStreamReference},
     Win32::{
         Foundation::{HWND, LPARAM},
-        System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
+        System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx},
         System::Threading::GetCurrentProcessId,
         System::WinRT::RoGetActivationFactory,
         UI::WindowsAndMessaging::{
-            CreateWindowExW, EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
-            HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE,
+            CreateWindowExW, EnumWindows, GetWindowThreadProcessId, HWND_MESSAGE, IsWindowVisible,
+            WINDOW_EX_STYLE, WINDOW_STYLE,
         },
     },
 };
-use windows::core::{BOOL, Ref, w};
 
 #[derive(Debug)]
 pub enum SystemEvent {
@@ -70,7 +68,7 @@ pub async fn wait_event() -> Option<SystemEvent> {
 struct EnumData {
     pid: u32,
     hwnd: HWND,
-    // fallback for when no visible window exists yet 
+    // fallback for when no visible window exists yet
     any_hwnd: HWND,
 }
 
@@ -96,7 +94,10 @@ fn create_message_window() -> Option<HWND> {
             w!("STATIC"),
             w!("RusicSMTC"),
             WINDOW_STYLE::default(),
-            0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
             Some(HWND_MESSAGE),
             None,
             None,
@@ -117,12 +118,7 @@ fn find_main_hwnd() -> Option<HWND> {
     };
 
     // return Err even on success
-    let _ = unsafe {
-        EnumWindows(
-            Some(enum_proc),
-            LPARAM(&mut data as *mut EnumData as isize),
-        )
-    };
+    let _ = unsafe { EnumWindows(Some(enum_proc), LPARAM(&mut data as *mut EnumData as isize)) };
 
     if !data.hwnd.0.is_null() {
         return Some(data.hwnd);
@@ -132,7 +128,7 @@ fn find_main_hwnd() -> Option<HWND> {
     if !data.any_hwnd.0.is_null() {
         return Some(data.any_hwnd);
     }
-    create_message_window() 
+    create_message_window()
 }
 
 // SMTC setup
@@ -209,7 +205,6 @@ fn setup_smtc(hwnd: HWND) {
     }
 }
 
-
 pub fn init() {
     if SMTC.get().is_some() {
         return;
@@ -234,10 +229,12 @@ pub fn init() {
 // convert seconds to a Windows TimeSpan (unit is 100-nanosecond ticks)
 #[inline]
 fn secs_to_timespan(secs: f64) -> TimeSpan {
-    TimeSpan { Duration: (secs * 10_000_000.0) as i64 }
+    TimeSpan {
+        Duration: (secs * 10_000_000.0) as i64,
+    }
 }
 
-// helper funcs: wrap raw bytes in an in-memory stream SMTC can read 
+// helper funcs: wrap raw bytes in an in-memory stream SMTC can read
 // or fetch image bytes from either a local path or an url
 fn stream_ref_from_bytes(bytes: &[u8]) -> Option<RandomAccessStreamReference> {
     let stream = InMemoryRandomAccessStream::new().ok()?;
@@ -321,7 +318,7 @@ pub fn update_now_playing(
                 });
             }
         }
-        
+
         let _ = updater.Update();
     }
 

@@ -1,7 +1,7 @@
 use config::{AppConfig, SortOrder};
 use dioxus::prelude::*;
-use reader::models::Track;
 use reader::Library;
+use reader::models::Track;
 use std::collections::HashMap;
 
 pub struct LibraryItems {

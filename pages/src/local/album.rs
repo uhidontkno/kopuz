@@ -14,12 +14,17 @@ pub fn LocalAlbum(
 ) -> Element {
     let local_albums = use_memo(move || {
         let mut albums = library.read().albums.clone();
-        albums.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        albums.sort_by(|a, b| {
+            a.title
+                .trim()
+                .to_lowercase()
+                .cmp(&b.title.trim().to_lowercase())
+        });
 
         let mut unique_albums = Vec::new();
         let mut seen_titles = std::collections::HashSet::new();
         for album in albums {
-            let title_key = album.title.to_lowercase();
+            let title_key = album.title.trim().to_lowercase();
             if seen_titles.insert(title_key) {
                 unique_albums.push(album);
             }

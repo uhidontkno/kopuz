@@ -20,13 +20,18 @@ pub fn JellyfinAlbum(
         let conf = config.read();
 
         let mut albums = lib.jellyfin_albums.clone();
-        albums.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        albums.sort_by(|a, b| {
+            a.title
+                .trim()
+                .to_lowercase()
+                .cmp(&b.title.trim().to_lowercase())
+        });
 
         let mut unique_albums = Vec::new();
         let mut seen_titles = std::collections::HashSet::new();
 
         for album in albums {
-            if seen_titles.insert(album.title.to_lowercase()) {
+            if seen_titles.insert(album.title.trim().to_lowercase()) {
                 unique_albums.push(album);
             }
         }

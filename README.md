@@ -5,7 +5,7 @@ Rusic is a modern, lightweight, music player application built with Rust and the
 [![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/K6Bmzw2E4M)
 ![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white)
 
-![Rusic](https://github.com/user-attachments/assets/b168976d-103c-46ad-9dd9-086e4388074f)
+![Rusic](https://github.com/user-attachments/assets/15d4942d-e9a0-404f-ad38-f292d224eaf1)
 
 ## Overview
 

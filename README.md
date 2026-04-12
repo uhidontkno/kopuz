@@ -147,6 +147,14 @@ overall these changes brought the rescan time down significantly and the app fee
 - **Lofty**: Metadata parsing
 - **TailwindCSS**: Styling framework based on CSS
 
+## Crypto Donation
+
+- **Solana**: "BK84dVEMnGBP5Tya2mEaB1BQgcSBjngf1NBmRCqefxGg"
+- **Bitcoin**: "bc1qz94yz9xvufa6hxlvjzaajgd2zyfu86arn68hu4"
+- **Monero**: "86mz3HxTrKyYpuvx78m6pufbXdwAnoyoZBztz6HyYrnM1XP5YVrMy9jTVRY5vzgGtkizACLpFwHEdafKTMoj6y8mAVgvWMz"
+- **Ethereum**: "0xa490D50470cdFf837B6663F7f6cBe50B157224e5"
+- **USDT on Solana Chain**: "GYmnAcrA5MbF6cUxT2m5d5cwdfr14qSY9WFYRwXxaibW"
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=temidaradev/rusic&type=date&legend=top-left)](https://www.star-history.com/#temidaradev/rusic&type=date&legend=top-left)

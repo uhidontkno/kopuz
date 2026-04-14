@@ -14,6 +14,12 @@ pub struct PlaylistModalProps {
 pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
     let mut new_playlist_name = use_signal(String::new);
     let store = props.playlist_store.read();
+    let add_to_playlist_text = rust_i18n::t!("add_to_playlist").to_string();
+    let no_playlists_found_text = rust_i18n::t!("no_playlists_found").to_string();
+    let create_new_playlist_text = rust_i18n::t!("create_new_playlist").to_string();
+    let create_text = rust_i18n::t!("create").to_string();
+    let cancel_text = rust_i18n::t!("cancel").to_string();
+    
     let playlists: Vec<_> = if props.is_jellyfin {
         store
             .jellyfin_playlists
@@ -36,12 +42,12 @@ pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
                 class: "bg-neutral-900 rounded-xl border border-white/10 w-full max-w-md p-6",
                 onclick: move |e| e.stop_propagation(),
                 h2 { class: "text-xl font-bold text-white mb-4",
-                    "Add to Playlist"
+                    "{add_to_playlist_text}"
                 }
 
                 div { class: "max-h-60 overflow-y-auto mb-4 space-y-2",
                     if playlists.is_empty() {
-                        p { class: "text-slate-500 text-sm italic", "No playlists found." }
+                        p { class: "text-slate-500 text-sm italic", "{no_playlists_found_text}" }
                     }
                     for (id, name, track_count) in playlists {
                         button {
@@ -54,7 +60,7 @@ pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
                 }
 
                 div { class: "border-t border-white/10 pt-4 mt-4",
-                    h3 { class: "text-sm font-medium text-white/60 mb-2", "Create New Playlist" }
+                    h3 { class: "text-sm font-medium text-white/60 mb-2", "{create_new_playlist_text}" }
                     div { class: "flex gap-2",
                         input {
                             r#type: "text",
@@ -74,7 +80,7 @@ pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
                                     new_playlist_name.set(String::new());
                                 }
                             },
-                            "Create"
+                            "{create_text}"
                         }
                     }
                 }
@@ -83,7 +89,7 @@ pub fn PlaylistModal(props: PlaylistModalProps) -> Element {
                     button {
                         class: "text-slate-400 hover:text-white text-sm transition-colors",
                         onclick: move |_| props.on_close.call(()),
-                        "Cancel"
+                        "{cancel_text}"
                     }
                 }
             }

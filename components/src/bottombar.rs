@@ -24,6 +24,8 @@ pub fn Bottombar(
 ) -> Element {
     let mut is_dragging = use_signal(|| false);
     let mut drag_progress = use_signal(|| 0u64);
+    let mut is_muted = use_signal(|| false);
+    let mut volume_before_mute = use_signal(|| 0.5f32);
 
     let display_progress = if *is_dragging.read() {
         *drag_progress.read()
@@ -110,7 +112,6 @@ pub fn Bottombar(
                 }
                 button {
                     class: "{heart_class}",
-                    title: if is_favorite { "Remove from Favorites" } else { "Add to Favorites" },
                     onclick: move |_| {
                         let q = queue.read();
                         let idx = *current_queue_index.read();
@@ -201,7 +202,6 @@ pub fn Bottombar(
                     button {
                         class: format!("{} transition-all active:scale-95 relative", if *ctrl.shuffle.read() { "text-white" } else { "text-slate-400 hover:text-white" }),
                         onclick: move |_| ctrl.toggle_shuffle(),
-                        title: if *ctrl.shuffle.read() { "Shuffle: On" } else { "Shuffle: Off" },
                         i { class: "fa-solid fa-shuffle text-sm" }
                     }
                     button {
@@ -234,11 +234,6 @@ pub fn Bottombar(
                             }
                         ),
                         onclick: move |_| ctrl.toggle_loop(),
-                        title: match *ctrl.loop_mode.read() {
-                            LoopMode::None => "Repeat: Off",
-                            LoopMode::Queue => "Repeat: Queue",
-                            LoopMode::Track => "Repeat: Track",
-                        },
                         i { class: "fa-solid fa-repeat text-sm" }
                         match *ctrl.loop_mode.read() {
                              LoopMode::Track => rsx! {
@@ -291,7 +286,30 @@ pub fn Bottombar(
                 class: "flex items-center justify-end gap-4 w-1/4",
                 div {
                     class: "flex items-center gap-2 group",
-                    i { class: "fa-solid fa-volume-high text-xs text-slate-400 group-hover:text-white" }
+                    button {
+                        class: "text-slate-400 hover:text-white transition-colors",
+                        onclick: move |_| {
+                            let muted = *is_muted.read();
+                            if muted {
+                                // Unmute: restore previous volume
+                                let vol = *volume_before_mute.read();
+                                player.write().set_volume(vol);
+                                volume.set(vol);
+                                config.write().volume = vol;
+                                is_muted.set(false);
+                            } else {
+                                // Mute: save current volume and set to 0
+                                volume_before_mute.set(*volume.read());
+                                player.write().set_volume(0.0);
+                                volume.set(0.0);
+                                config.write().volume = 0.0;
+                                is_muted.set(true);
+                            }
+                        },
+                        i { 
+                            class: if *is_muted.read() { "fa-solid fa-volume-xmark text-xs" } else { "fa-solid fa-volume-high text-xs" }
+                        }
+                    }
                     div {
                         class: "w-24 h-1 bg-white/10 rounded-full group/vol cursor-pointer relative",
                         div {
@@ -309,12 +327,16 @@ pub fn Bottombar(
                             onchange: move |evt| {
                                 if let Ok(val) = evt.value().parse::<f32>() {
                                     config.write().volume = val;
+                                    is_muted.set(false);
                                 }
                             },
                             oninput: move |evt| {
                                 if let Ok(val) = evt.value().parse::<f32>() {
                                     player.write().set_volume(val);
                                     volume.set(val);
+                                    if val > 0.0 && *is_muted.read() {
+                                        is_muted.set(false);
+                                    }
                                 }
                             }
                         }

@@ -12,6 +12,8 @@ use reader::FavoritesStore;
 use rusic_route::Route;
 use std::sync::Arc;
 
+rust_i18n::i18n!("../locales");
+
 const FAVICON: Asset = asset!("../assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("../assets/main.css");
 const THEME_CSS: Asset = asset!("../assets/themes.css");
@@ -21,6 +23,9 @@ const REDUCED_ANIMATIONS_CSS: Asset = asset!("../assets/reduced-animations.css")
 static PRESENCE: std::sync::OnceLock<Option<Arc<Presence>>> = std::sync::OnceLock::new();
 
 fn main() {
+    let mut config = config::AppConfig::load(&directories::ProjectDirs::from("com", "temidaradev", "rusic").unwrap().config_dir().join("config.json"));
+    rust_i18n::set_locale(&config.language);
+
     let presence: Option<Arc<Presence>> = match Presence::new("1470087339639443658") {
         Ok(p) => {
             println!("Discord presence connected!");
@@ -580,10 +585,6 @@ fn App() -> Element {
                                 current_song_progress: current_song_progress,
                                 queue: queue,
                                 current_queue_index: current_queue_index,
-                                on_close: move |_evt: ()| {
-                                    selected_artist_name.set(String::new());
-                                    current_route.set(Route::Home);
-                                }
                             }
                         },
                         Route::Favorites => rsx! {

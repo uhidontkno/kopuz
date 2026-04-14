@@ -24,14 +24,14 @@ pub fn SelectionBar(
                     class: "hover:opacity-80 transition-opacity flex items-center gap-2 font-medium whitespace-nowrap",
                     onclick: move |_| on_add_to_playlist.call(()),
                     i { class: "fa-solid fa-plus text-sm" }
-                    span { class: "hidden sm:inline", "Add to Playlist" }
+                    span { class: "hidden sm:inline", "{rust_i18n::t!(\"add_to_playlist\")}" }
                 }
 
                 button {
                     class: "hover:opacity-80 transition-opacity flex items-center gap-2 font-medium whitespace-nowrap",
                     onclick: move |_| on_delete.call(()),
                     i { class: "fa-solid fa-trash text-sm" }
-                    span { class: "hidden sm:inline", "Delete" }
+                    span { class: "hidden sm:inline", "{rust_i18n::t!(\"delete\")}" }
                 }
             }
 

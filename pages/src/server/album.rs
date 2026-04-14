@@ -77,7 +77,7 @@ pub fn JellyfinAlbum(
     rsx! {
         div {
             if jellyfin_albums().is_empty() {
-                p { class: "text-slate-500", "No albums found in your music library." }
+                p { class: "text-slate-500", "{rust_i18n::t!(\"no_albums_found\")}" }
             } else {
                 div { class: "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6",
                     for (album_id_val, album_title, artist, cover_url) in jellyfin_albums() {
@@ -411,7 +411,7 @@ pub fn JellyfinAlbumDetails(
                     class: "flex items-center gap-2 text-slate-400 hover:text-white transition-colors",
                     onclick: move |_| on_close.call(()),
                     i { class: "fa-solid fa-arrow-left" }
-                    "Back to Albums"
+                    "{rust_i18n::t!(\"back_to_albums\")}"
                 }
             }
 
@@ -459,13 +459,13 @@ pub fn JellyfinAlbumDetails(
                 if album_tracks().is_empty() {
                     div { class: "py-12 flex flex-col items-center justify-center text-slate-600",
                         i { class: "fa-regular fa-folder-open text-4xl mb-4" }
-                        p { class: "text-lg", "No songs here." }
+                        p { class: "text-lg", "{rust_i18n::t!(\"no_songs_here\")}" }
                     }
                 } else {
                     div { class: "grid grid-cols-[auto_1fr_1fr_auto_auto] gap-4 px-4 py-2 border-b border-white/5 text-sm font-medium text-slate-500 mb-2 uppercase tracking-wider",
                         div { class: "w-8 text-center", "#" }
-                        div { "Title" }
-                        div { "Album" }
+                        div { "{rust_i18n::t!(\"title\")}" }
+                        div { "{rust_i18n::t!(\"album\")}" }
                     }
                     for (idx, (track, track_cover_url)) in album_tracks().into_iter().enumerate() {
                         {

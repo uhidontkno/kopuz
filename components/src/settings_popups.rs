@@ -25,7 +25,7 @@ pub fn AddServerPopup(
                 class: "popup",
                 onclick: |e| e.stop_propagation(),
 
-                h2 { "Add Media Server" }
+                h2 { "{rust_i18n::t!(\"add_media_server\")}" }
 
                 if let Some(err) = error() {
                     p { class: "error", "{err}" }
@@ -56,8 +56,8 @@ pub fn AddServerPopup(
                         server_service.set(service);
                     },
                     onkeydown: move |e| e.stop_propagation(),
-                    option { value: "jellyfin", "Jellyfin" }
-                    option { value: "subsonic", "Subsonic" }
+                    option { value: "jellyfin", "{rust_i18n::t!(\"jellyfin\")}" }
+                    option { value: "subsonic", "{rust_i18n::t!(\"subsonic\")}" }
                     option { value: "custom", "Custom (manual API)" }
                 }
 
@@ -127,7 +127,7 @@ pub fn LoginPopup(
                     button {
                         onclick: move |_| if !loading() { on_save.call(()) },
                         disabled: loading(),
-                        if loading() { "Logging in..." } else { "Login" }
+                        if loading() { "{rust_i18n::t!(\"logging_in\")}" } else { "{rust_i18n::t!(\"login\")}" }
                     }
                 }
             }

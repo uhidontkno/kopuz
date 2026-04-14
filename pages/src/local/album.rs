@@ -40,7 +40,7 @@ pub fn LocalAlbum(
     rsx! {
         div {
             if local_albums().is_empty() {
-                p { class: "text-slate-500", "No albums found in library." }
+                p { class: "text-slate-500", "{rust_i18n::t!(\"no_albums_found\")}" }
             } else {
                 div { class: "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6",
                     for album in local_albums() {

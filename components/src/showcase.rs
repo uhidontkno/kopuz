@@ -81,13 +81,13 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                  if props.tracks.is_empty() {
                      div { class: "py-12 flex flex-col items-center justify-center text-slate-600",
                          i { class: "fa-regular fa-folder-open text-4xl mb-4" }
-                         p { class: "text-lg", "No songs here." }
+                         p { class: "text-lg", "{rust_i18n::t!(\"no_songs_here\")}" }
                      }
                  } else {
                      div { class: "grid grid-cols-[auto_1fr_1fr_auto_auto] gap-4 px-4 py-2 border-b border-white/5 text-sm font-medium text-slate-500 mb-2 uppercase tracking-wider",
                           div { class: "w-8 text-center", "#" }
-                          div { "Title" }
-                          div { "Album" }
+                          div { "{rust_i18n::t!(\"title\")}" }
+                          div { "{rust_i18n::t!(\"album\")}" }
                      }
 
                      for (idx, track) in props.tracks.iter().enumerate() {

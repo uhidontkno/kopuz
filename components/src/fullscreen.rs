@@ -266,7 +266,7 @@ pub fn Fullscreen(
                     button {
                         class: format!("{} transition-all active:scale-95 relative flex-shrink-0", if *ctrl.shuffle.read() { "text-white" } else { "text-white/50 hover:text-white" }),
                         onclick: move |_| ctrl.toggle_shuffle(),
-                        title: if *ctrl.shuffle.read() { "Shuffle: On" } else { "Shuffle: Off" },
+                        title: if *ctrl.shuffle.read() { rust_i18n::t!("shuffle_on").to_string() } else { rust_i18n::t!("shuffle_off").to_string() },
                         i { class: "fa-solid fa-shuffle text-lg" }
                     }
                     div {
@@ -432,12 +432,12 @@ pub fn Fullscreen(
                                     }
                                 }
                                 Some(None) => rsx! { "" },
-                                None => rsx! { "Loading lyrics..." },
+                                None => rsx! { "{rust_i18n::t!(\"loading_lyrics\")}" },
                             }
                         }
                     } else if *active_tab.read() == 0 {
                         if *current_queue_index.read() == 0 {
-                            div { class: "text-white/30 text-center py-10 text-sm", "No previous songs" }
+                            div { class: "text-white/30 text-center py-10 text-sm", "{rust_i18n::t!(\"no_previous_songs\")}" }
                         }
                         for i in 0..*current_queue_index.read() {
                             {
@@ -471,7 +471,7 @@ pub fn Fullscreen(
                         }
                     } else if *active_tab.read() == 1 {
                         if queue.read().len() <= *current_queue_index.read() + 1 {
-                            div { class: "text-white/30 text-center py-10 text-sm", "No more songs in queue" }
+                            div { class: "text-white/30 text-center py-10 text-sm", "{rust_i18n::t!(\"no_more_songs\")}" }
                         }
                         for i in (*current_queue_index.read() + 1)..queue.read().len() {
                             {

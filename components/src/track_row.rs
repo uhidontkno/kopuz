@@ -38,7 +38,7 @@ pub fn TrackRow(
         if let Some(handler) = on_long_press {
             let mut occurred = long_press_occurred;
             let task = spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                utils::sleep(std::time::Duration::from_millis(600)).await;
                 occurred.set(true);
                 handler.call(());
             });

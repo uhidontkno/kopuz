@@ -760,7 +760,7 @@ impl Player {
     }
 
     pub fn is_empty(&self) -> bool {
-        !self.has_source || self.audio.ended()
+        !self.has_source || self.audio.ended() || self.audio.error().is_some()
     }
 
     pub fn is_paused(&self) -> bool {

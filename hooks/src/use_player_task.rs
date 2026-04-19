@@ -193,6 +193,7 @@ pub fn use_player_task(mut ctrl: PlayerController) {
 
         async move {
             let mut last_progress_secs: u64 = u64::MAX;
+            let mut prev_playing = false;
             #[cfg(not(target_arch = "wasm32"))]
             let bg_notify = BG_NOTIFY.get_or_init(tokio::sync::Notify::new);
             loop {
@@ -279,7 +280,7 @@ pub fn use_player_task(mut ctrl: PlayerController) {
                                     }
 
                                     if last_progress_report.elapsed().as_secs() >= 5
-                                        || is_playing != *was_playing.peek()
+                                        || is_playing != prev_playing
                                     {
                                         let ticks = pos.as_micros() as u64 * 10;
                                         let remote = remote.clone();
@@ -459,6 +460,7 @@ pub fn use_player_task(mut ctrl: PlayerController) {
                     }
                 }
 
+                prev_playing = is_playing;
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     was_playing.set(is_playing);

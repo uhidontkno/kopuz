@@ -32,9 +32,11 @@ pub fn PlaylistsPage(
     let mut show_add_playlist = use_signal(|| false);
     let mut playlist_name = use_signal(|| String::new());
     let mut error = use_signal(|| Option::<String>::None);
+    let mut saving = use_signal(|| false);
     let mut playlist_refresh_trigger = use_signal(|| 0u64);
 
     let handle_add_playlist = move |_| {
+        if saving() { return; }
         let name = playlist_name();
         if is_server {
             let server_vals = {
@@ -47,6 +49,7 @@ pub fn PlaylistsPage(
             };
             if let Some((service, url, token, user_id, device_id)) = server_vals {
                 error.set(None);
+                saving.set(true);
                 spawn(async move {
                     let result = match service {
                         MusicService::Jellyfin => {
@@ -58,6 +61,7 @@ pub fn PlaylistsPage(
                             remote.create_playlist(&name, &[]).await
                         }
                     };
+                    saving.set(false);
                     match result {
                         Ok(_) => {
                             playlist_refresh_trigger.with_mut(|v| *v += 1);
@@ -118,7 +122,7 @@ pub fn PlaylistsPage(
                     button {
                         class: "text-white/60 flex items-center hover:text-white transition-colors p-3 rounded-full hover:bg-white/10",
                         title: "Add playlist",
-                        onclick: move |_| show_add_playlist.set(true),
+                        onclick: move |_| { error.set(None); show_add_playlist.set(true); },
                         i { class: "fa-solid fa-add" }
                     }
                 }
@@ -126,7 +130,7 @@ pub fn PlaylistsPage(
                     AddPlaylistPopup {
                         playlist_name: playlist_name,
                         error: error,
-                        on_close: move |_| show_add_playlist.set(false),
+                        on_close: move |_| { error.set(None); show_add_playlist.set(false); },
                         on_save: handle_add_playlist
                     }
                 }

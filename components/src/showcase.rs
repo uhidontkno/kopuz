@@ -57,9 +57,15 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                      }
                      h1 { class: "text-5xl md:text-7xl font-bold text-white mb-6", "{props.name}" }
                      div { class: "flex items-center gap-6 text-slate-400",
-                         p { "{props.tracks.len()} songs" }
+                         {
+                            let count = props.tracks.len();
+                            let song_text = rust_i18n::t!("showcase_song_count", count = count).to_string();
+                            rsx! { 
+                                p { "{song_text}" }
+                            }
+                         }
                          span { "•" }
-                         p { "{duration_min} min" }
+                         p { "{duration_min} {rust_i18n::t!(\"min\")}" }
                      }
                  }
 

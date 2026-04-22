@@ -10,7 +10,7 @@ use reader::Library;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-const ITEM_HEIGHT: f64 = 64.0; // 60px content + 4px margin (mb-1)
+const ITEM_HEIGHT: f64 = 60.0; // 60px content
 
 #[component]
 pub fn LocalLibrary(
@@ -105,10 +105,9 @@ pub fn LocalLibrary(
             let is_selected = selected_tracks.read().contains(&track_path);
 
             rsx! {
-                div {
-                    key: "{track_key}",
-                    class: "mb-1",
-                    style: "height: {ITEM_HEIGHT}px;",
+div {
+    key: "{track_key}",
+    style: "height: {ITEM_HEIGHT}px;",
                     TrackRow {
                         track: track.clone(),
                         cover_url: cover_url.clone(),

@@ -1,3 +1,4 @@
+use crate::reorder_buttons::ReorderButtons;
 use crate::track_row::TrackRow;
 use config::{AppConfig, MusicService, MusicSource};
 use dioxus::prelude::*;
@@ -26,6 +27,7 @@ pub struct ShowcaseProps {
     pub selected_tracks: HashSet<PathBuf>,
     pub on_select: Option<EventHandler<(usize, bool)>>,
     pub on_long_press: Option<EventHandler<usize>>,
+    pub on_cover_click: Option<EventHandler<()>>,
     #[props(default = false)]
     pub is_reorderable: bool,
     #[props(default)]
@@ -54,6 +56,17 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                      } else {
                          div { class: "w-full h-full flex flex-col items-center justify-center text-white/20",
                              i { class: "fa-solid fa-music text-6xl mb-4" }
+                         }
+                     }
+                     if props.on_cover_click.is_some() {
+                         div {
+                             class: "absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer rounded-xl",
+                             onclick: move |_| {
+                                 if let Some(ref h) = props.on_cover_click {
+                                     h.call(());
+                                 }
+                             },
+                             i { class: "fa-solid fa-camera text-white text-3xl" }
                          }
                      }
                  }
@@ -109,8 +122,9 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                                      let path_str = track.path.to_string_lossy();
                                      match server.service {
                                          MusicService::Jellyfin => {
-                                             utils::jellyfin_image::jellyfin_image_url_from_path(
+                                             utils::jellyfin_image::track_cover_url_with_album_fallback(
                                                  &path_str,
+                                                 &track.album_id,
                                                  &server.url,
                                                  server.access_token.as_deref(),
                                                  80,
@@ -143,6 +157,7 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                                  div {
                                      key: "{track.path.display()}",
                                      class: "flex items-center group",
+                                     style: "content-visibility: auto; contain-intrinsic-size: 0 60px;",
                                      div { class: "flex-1 min-w-0",
                                          TrackRow {
                                              track: track.clone(),
@@ -189,17 +204,11 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                                          }
                                      }
                                      if props.is_reorderable && !props.is_selection_mode {
-                                         div { class: "flex flex-col pr-2 shrink-0",
-                                             button {
-                                                 class: if can_move_up { "p-0.5 text-slate-500 hover:text-white transition-colors" } else { "p-0.5 text-slate-700 cursor-default" },
-                                                 onclick: move |evt| { evt.stop_propagation(); if can_move_up { props.on_move_up.call(idx); } },
-                                                 i { class: "fa-solid fa-chevron-up text-[9px]" }
-                                             }
-                                             button {
-                                                 class: if can_move_down { "p-0.5 text-slate-500 hover:text-white transition-colors" } else { "p-0.5 text-slate-700 cursor-default" },
-                                                 onclick: move |evt| { evt.stop_propagation(); if can_move_down { props.on_move_down.call(idx); } },
-                                                 i { class: "fa-solid fa-chevron-down text-[9px]" }
-                                             }
+                                         ReorderButtons {
+                                             can_move_up,
+                                             can_move_down,
+                                             on_move_up: move |_| props.on_move_up.call(idx),
+                                             on_move_down: move |_| props.on_move_down.call(idx),
                                          }
                                      }
                                  }

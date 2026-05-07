@@ -371,7 +371,7 @@ impl JellyfinClient {
         let user_id = self.user_id()?;
         let path = format!("/Users/{}/Items", user_id);
 
-        let fields = "DateCreated,DateLastMediaAdded".to_string();
+        let fields = "DateCreated,DateLastMediaAdded,ImageTags".to_string();
         let query = [
             ("IncludeItemTypes", "Playlist"),
             ("Recursive", "true"),
@@ -534,6 +534,27 @@ impl JellyfinClient {
             return Err(format!("Failed to move playlist item: {}", resp.status()));
         }
 
+        Ok(())
+    }
+
+    pub async fn set_playlist_image(
+        &self,
+        playlist_id: &str,
+        image_bytes: Vec<u8>,
+        content_type: &str,
+    ) -> Result<(), String> {
+        let resp = self
+            .authorized_request(
+                reqwest::Method::POST,
+                &format!("/Items/{}/Images/Primary", playlist_id),
+            )?
+            .header("Content-Type", content_type)
+            .body(image_bytes)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Self::ensure_success(resp, "Failed to upload playlist image").await?;
         Ok(())
     }
 

@@ -159,6 +159,7 @@ impl Player {
         let stream_state = state.clone();
         let stream_consumer = consumer.clone();
         let stream_position = position_micros.clone();
+        let stream_equalizer = self.equalizer.clone();
 
         let host = cpal::default_host();
         let device = host
@@ -184,6 +185,12 @@ impl Player {
                     let cons = stream_consumer.lock().unwrap_or_else(|e| e.into_inner());
                     let read = cons.read(data).unwrap_or(0);
                     drop(cons);
+
+                    if read > 0 {
+                        if let Ok(mut eq) = stream_equalizer.lock() {
+                            eq.process_in_place(&mut data[..read]);
+                        }
+                    }
 
                     stream_position.fetch_add(
                         (read as u64 * 1_000_000) / (channels as u64 * device_sample_rate as u64),
@@ -421,10 +428,6 @@ impl Player {
                 source_sample_rate,
                 target_sample_rate,
             );
-
-            if let Ok(mut eq) = equalizer.lock() {
-                eq.process_in_place(&mut samples);
-            }
 
             let mut offset = 0;
             while offset < samples.len() {
@@ -699,6 +702,11 @@ impl Player {
         st.paused
     }
 
+    pub fn can_resume(&self) -> bool {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        !st.stopped && !st.finished && self._stream.is_some()
+    }
+
     pub fn stop(&mut self) {
         self.stop_internal();
         self.now_playing = None;
@@ -948,6 +956,10 @@ impl Player {
 
     pub fn is_paused(&self) -> bool {
         self.audio.paused()
+    }
+
+    pub fn can_resume(&self) -> bool {
+        self.has_source && !self.audio.ended() && self.audio.error().is_none()
     }
 
     pub fn get_position(&self) -> Duration {

@@ -1,7 +1,9 @@
 #[cfg(target_arch = "wasm32")]
 use crate::web_storage::{
-    load_web_config, load_web_favorites, load_web_library, load_web_playlists, load_web_ui_state,
-    save_web_config, save_web_favorites, save_web_library, save_web_playlists, save_web_ui_state,
+    clear_web_queue_state, load_web_config, load_web_favorites, load_web_library,
+    load_web_playlists, load_web_queue_state, load_web_ui_state, save_web_config,
+    save_web_favorites, save_web_library, save_web_playlists, save_web_queue_state,
+    save_web_ui_state,
 };
 use components::{
     bottombar::Bottombar, fullscreen::Fullscreen, rightbar::Rightbar, sidebar::Sidebar,
@@ -9,6 +11,8 @@ use components::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use dioxus::desktop::tao::dpi::LogicalSize;
+#[cfg(not(target_arch = "wasm32"))]
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
 use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 use dioxus::prelude::*;
@@ -16,12 +20,14 @@ use dioxus::prelude::*;
 use discord_presence::Presence;
 use kopuz_route::Route;
 use player::player::Player;
+use queue_state::PersistedQueueState;
 use reader::FavoritesStore;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
+mod queue_state;
 mod web_storage;
 
 const FAVICON: Asset = asset!("../assets/favicon.ico");
@@ -29,20 +35,217 @@ const MAIN_CSS: Asset = asset!("../assets/main.css");
 const THEME_CSS: Asset = asset!("../assets/themes.css");
 const TAILWIND_CSS: Asset = asset!("../assets/tailwind.css");
 const REDUCED_ANIMATIONS_CSS: Asset = asset!("../assets/reduced-animations.css");
+const QUEUE_STATE_SAVE_DEBOUNCE_MS: u64 = 1200;
+const QUEUE_STATE_PROGRESS_STEP_SECS: u64 = 5;
 
 #[cfg(not(target_arch = "wasm32"))]
 static PRESENCE: std::sync::OnceLock<Option<Arc<Presence>>> = std::sync::OnceLock::new();
 
+#[cfg(not(target_arch = "wasm32"))]
+fn persist_config_snapshot(config_snapshot: config::AppConfig, path: std::path::PathBuf) {
+    spawn(async move {
+        let result = tokio::task::spawn_blocking(move || config_snapshot.save(&path)).await;
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::error!("Failed to save config: {}", e),
+            Err(e) => tracing::error!("Failed to join config save task: {}", e),
+        }
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn persist_config_snapshot(config_snapshot: config::AppConfig, _path: std::path::PathBuf) {
+    save_web_config(&config_snapshot);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn persist_queue_state_snapshot(
+    queue_state: Option<PersistedQueueState>,
+    path: std::path::PathBuf,
+) {
+    let result = tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+        if let Some(queue_state) = queue_state {
+            queue_state.save(&path)
+        } else {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            match std::fs::remove_file(&path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e),
+            }
+        }
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => tracing::error!("Failed to save queue state: {}", e),
+        Err(e) => tracing::error!("Failed to join queue state save task: {}", e),
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn persist_queue_state_snapshot(
+    queue_state: Option<PersistedQueueState>,
+    _path: std::path::PathBuf,
+) {
+    if let Some(queue_state) = queue_state {
+        save_web_queue_state(&queue_state);
+    } else {
+        clear_web_queue_state();
+    }
+}
+
+fn is_server_queue_track(track: &reader::Track) -> bool {
+    matches!(
+        track
+            .path
+            .to_string_lossy()
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "jellyfin" | "subsonic" | "custom"
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn is_restorable_queue_track(track: &reader::Track) -> bool {
+    is_server_queue_track(track) || track.path.exists()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn is_restorable_queue_track(_track: &reader::Track) -> bool {
+    true
+}
+
+fn sanitize_queue_state(state: PersistedQueueState) -> Option<PersistedQueueState> {
+    if state.queue.is_empty() {
+        return None;
+    }
+
+    let original_index = state.current_queue_index.min(state.queue.len().saturating_sub(1));
+    let mut selected_track_survived = false;
+    let survivors: Vec<(usize, reader::Track)> = state
+        .queue
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, track)| {
+            let keep = is_restorable_queue_track(track);
+            if keep && *idx == original_index {
+                selected_track_survived = true;
+            }
+            keep
+        })
+        .collect();
+
+    if survivors.is_empty() {
+        return None;
+    }
+
+    let restored_index = if selected_track_survived {
+        survivors
+            .iter()
+            .position(|(idx, _)| *idx == original_index)
+            .unwrap_or(0)
+    } else {
+        survivors
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, (idx, _))| (idx.abs_diff(original_index), *idx > original_index))
+            .map(|(restored_idx, _)| restored_idx)
+            .unwrap_or(0)
+    };
+
+    let queue: Vec<_> = survivors.into_iter().map(|(_, track)| track).collect();
+    let progress_secs = if selected_track_survived {
+        queue.get(restored_index)
+            .map(|track| state.progress_secs.min(track.duration))
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    Some(PersistedQueueState {
+        version: state.version,
+        queue,
+        current_queue_index: restored_index,
+        progress_secs,
+    })
+}
+
+fn build_queue_state_snapshot(
+    queue: &[reader::Track],
+    current_queue_index: usize,
+    current_song_progress: u64,
+    is_playing: bool,
+) -> Option<PersistedQueueState> {
+    if queue.is_empty() {
+        return None;
+    }
+
+    let current_idx = current_queue_index.min(queue.len() - 1);
+    let progress_secs = queue
+        .get(current_idx)
+        .map(|track| current_song_progress.min(track.duration))
+        .unwrap_or(0);
+    let progress_secs = if is_playing {
+        progress_secs - (progress_secs % QUEUE_STATE_PROGRESS_STEP_SECS)
+    } else {
+        progress_secs
+    };
+
+    Some(PersistedQueueState {
+        version: 1,
+        queue: queue.to_vec(),
+        current_queue_index: current_idx,
+        progress_secs,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn read_titlebar_mode_from_disk() -> config::TitlebarMode {
+    directories::ProjectDirs::from("com", "temidaradev", "kopuz")
+        .map(|d| d.config_dir().join("config.json"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str::<config::AppConfig>(&s).ok())
+        .map(|c| c.titlebar_mode)
+        .unwrap_or_default()
+}
+
 fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        let log_dir = directories::ProjectDirs::from("com", "temidaradev", "kopuz")
+            .map(|dirs| dirs.data_local_dir().join("logs"))
+            .unwrap_or_else(|| std::path::PathBuf::from("logs"));
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        let file_appender = tracing_appender::rolling::daily(&log_dir, "kopuz.log");
+        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+        tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_ansi(false)
+                    .with_writer(non_blocking),
+            )
+            .init();
+        tracing::info!("Log file: {}", log_dir.display());
+
         let presence: Option<Arc<Presence>> = match Presence::new("1470087339639443658") {
             Ok(p) => {
-                println!("Discord presence connected!");
+                tracing::info!("Discord presence connected");
                 Some(Arc::new(p))
             }
             Err(e) => {
-                eprintln!("Failed to connect to Discord: {e}");
+                tracing::warn!("Failed to connect to Discord: {e}");
                 None
             }
         };
@@ -69,7 +272,10 @@ fn main() {
 
         #[cfg(target_os = "linux")]
         {
-            window = window.with_decorations(false);
+            let initial_titlebar_mode = read_titlebar_mode_from_disk();
+            window = window.with_decorations(
+                initial_titlebar_mode == config::TitlebarMode::System
+            );
         }
 
         let config = dioxus::desktop::Config::new()
@@ -115,7 +321,7 @@ fn main() {
                 let path = std::path::Path::new(&file_path);
 
                 if !path.exists() {
-                    eprintln!("[artwork] File not found: {}", file_path);
+                    tracing::warn!("[artwork] File not found: {}", file_path);
                     return http::Response::builder()
                         .status(404)
                         .body(std::borrow::Cow::from(Vec::new()))
@@ -136,7 +342,7 @@ fn main() {
                         .body(std::borrow::Cow::from(content))
                         .unwrap(),
                     Err(e) => {
-                        eprintln!("[artwork] Failed to read file {}: {}", file_path, e);
+                        tracing::error!("[artwork] Failed to read file {}: {}", file_path, e);
                         http::Response::builder()
                             .status(500)
                             .body(std::borrow::Cow::from(Vec::new()))
@@ -192,6 +398,7 @@ fn App() -> Element {
     let mut playlist_store = use_signal(reader::PlaylistStore::default);
     #[allow(unused_variables)]
     let favorites_path = use_memo(move || cache_dir().join("favorites.json"));
+    let queue_state_path = use_memo(move || cache_dir().join("queue_state.json"));
     let mut favorites_store = use_signal(FavoritesStore::default);
     let mut initial_load_done = use_signal(|| false);
     #[allow(unused_variables)]
@@ -199,6 +406,7 @@ fn App() -> Element {
     #[cfg(not(target_arch = "wasm32"))]
     let _ = std::fs::create_dir_all(cover_cache());
     let mut trigger_rescan = use_signal(|| 0);
+    let mut scan_current_file = use_signal(|| Option::<String>::None);
     let current_playing = use_signal(|| 0);
     let mut player = use_signal(Player::new);
     let current_song_cover_url = use_signal(String::new);
@@ -210,12 +418,16 @@ fn App() -> Element {
     let current_song_bitrate = use_signal(|| 0u8);
     let current_song_progress = use_signal(|| 0u64);
     let mut volume = use_signal(|| 1.0f32);
+    let mut persisted_volume = use_signal(|| 1.0f32);
+    let mut configured_music_dirs = use_signal(|| config.peek().music_directory.clone());
 
     let is_playing = use_signal(|| false);
     let is_fullscreen = use_signal(|| false);
     let is_rightbar_open = use_signal(|| false);
     let rightbar_width = use_signal(|| 320usize);
     let mut palette = use_signal(|| Option::<Vec<utils::color::Color>>::None);
+    let mut pending_queue_state_snapshot = use_signal(|| None::<PersistedQueueState>);
+    let mut pending_queue_state_revision = use_signal(|| 0u64);
 
     #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
     use_effect(move || {
@@ -248,6 +460,13 @@ fn App() -> Element {
         }
     });
 
+    use_effect(move || {
+        let next_dirs = config.read().music_directory.clone();
+        if *configured_music_dirs.peek() != next_dirs {
+            configured_music_dirs.set(next_dirs);
+        }
+    });
+
     #[cfg(not(target_arch = "wasm32"))]
     let presence = PRESENCE.get().cloned().flatten();
     #[cfg(not(target_arch = "wasm32"))]
@@ -256,9 +475,28 @@ fn App() -> Element {
     let mut selected_album_id = use_signal(String::new);
     let mut selected_playlist_id = use_signal(|| None::<String>);
     let mut selected_artist_name = use_signal(String::new);
-    let mut search_query = use_signal(String::new);
+    let search_query = use_signal(String::new);
     let mut last_server_playlist_key = use_signal(|| None::<String>);
     let mut server_playlist_key_initialized = use_signal(|| false);
+    let mut queue = use_signal(Vec::<reader::Track>::new);
+    let current_queue_index = use_signal(|| 0usize);
+    let mut ctrl = hooks::use_player_controller(
+        player,
+        is_playing,
+        queue,
+        current_queue_index,
+        current_song_title,
+        current_song_artist,
+        current_song_album,
+        current_song_khz,
+        current_song_bitrate,
+        current_song_duration,
+        current_song_progress,
+        current_song_cover_url,
+        volume,
+        library,
+        config,
+    );
 
     use_effect(move || {
         if !*initial_load_done.read() {
@@ -295,22 +533,27 @@ fn App() -> Element {
         if !*initial_load_done.read() {
             return;
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let config_snapshot = config.read().clone();
-            let path = config_path();
-            spawn(async move {
-                let result = tokio::task::spawn_blocking(move || config_snapshot.save(&path)).await;
-                if let Ok(Err(e)) = result {
-                    eprintln!("Failed to save config: {}", e);
-                }
-            });
+        let mut config_snapshot = config.read().clone();
+        config_snapshot.volume = *volume.peek();
+        persist_config_snapshot(config_snapshot, config_path());
+    });
+
+    use_effect(move || {
+        if !*initial_load_done.read() {
+            return;
         }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let cfg_snapshot = config.read().clone();
-            save_web_config(&cfg_snapshot);
-        }
+
+        let committed_volume = *persisted_volume.read();
+        let mut config_snapshot = config.peek().clone();
+        config_snapshot.volume = committed_volume;
+        persist_config_snapshot(config_snapshot, config_path());
+    });
+
+    #[cfg(all(not(target_arch = "wasm32"), target_os = "linux"))]
+    use_effect(move || {
+        let mode = config.read().titlebar_mode;
+        let win = dioxus::desktop::use_window();
+        win.set_decorations(mode == config::TitlebarMode::System);
     });
 
     use_effect(move || {
@@ -324,7 +567,7 @@ fn App() -> Element {
             spawn(async move {
                 let result = tokio::task::spawn_blocking(move || store_snapshot.save(&path)).await;
                 if let Ok(Err(e)) = result {
-                    eprintln!("Failed to save playlists: {}", e);
+                    tracing::error!("Failed to save playlists: {}", e);
                 }
             });
         }
@@ -346,7 +589,7 @@ fn App() -> Element {
             spawn(async move {
                 let result = tokio::task::spawn_blocking(move || lib_snapshot.save(&path)).await;
                 if let Ok(Err(e)) = result {
-                    eprintln!("Failed to save library: {}", e);
+                    tracing::error!("Failed to save library: {}", e);
                 }
             });
         }
@@ -368,7 +611,7 @@ fn App() -> Element {
             spawn(async move {
                 let result = tokio::task::spawn_blocking(move || store_snapshot.save(&path)).await;
                 if let Ok(Err(e)) = result {
-                    eprintln!("Failed to save favorites: {}", e);
+                    tracing::error!("Failed to save favorites: {}", e);
                 }
             });
         }
@@ -379,6 +622,54 @@ fn App() -> Element {
         }
     });
 
+    use_effect(move || {
+        if !*initial_load_done.read() {
+            return;
+        }
+
+        let queue_snapshot = queue.read().clone();
+        let queue_state = build_queue_state_snapshot(
+            &queue_snapshot,
+            *current_queue_index.read(),
+            *current_song_progress.read(),
+            *is_playing.read(),
+        );
+
+        if *pending_queue_state_snapshot.peek() != queue_state {
+            pending_queue_state_snapshot.set(queue_state);
+            pending_queue_state_revision.with_mut(|revision| *revision += 1);
+        }
+    });
+
+    use_future(move || {
+        let path = queue_state_path();
+        async move {
+            let mut flushed_revision = 0u64;
+
+            loop {
+                let pending_revision = *pending_queue_state_revision.read();
+                if pending_revision == flushed_revision {
+                    utils::sleep(std::time::Duration::from_millis(250)).await;
+                    continue;
+                }
+
+                utils::sleep(std::time::Duration::from_millis(
+                    QUEUE_STATE_SAVE_DEBOUNCE_MS,
+                ))
+                .await;
+
+                let latest_revision = *pending_queue_state_revision.read();
+                if latest_revision != pending_revision {
+                    continue;
+                }
+
+                let snapshot = pending_queue_state_snapshot.read().clone();
+                persist_queue_state_snapshot(snapshot, path.clone()).await;
+                flushed_revision = latest_revision;
+            }
+        }
+    });
+
     use_hook(move || {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -386,20 +677,26 @@ fn App() -> Element {
             let config_path = config_path();
             let playlist_path = playlist_path();
             let favorites_path = favorites_path();
+            let queue_state_path = queue_state_path();
+            let mut ctrl = ctrl;
 
             spawn(async move {
                 let lib_path_c = lib_path.clone();
                 let config_path_c = config_path.clone();
                 let playlist_path_c = playlist_path.clone();
                 let favorites_path_c = favorites_path.clone();
+                let queue_state_path_c = queue_state_path.clone();
 
-                let (lib_res, cfg_res, pl_res, fav_res) = tokio::join!(
+                let (lib_res, cfg_res, pl_res, fav_res, queue_res) = tokio::join!(
                     tokio::task::spawn_blocking(move || reader::Library::load(&lib_path_c)),
                     tokio::task::spawn_blocking(move || config::AppConfig::load(&config_path_c)),
                     tokio::task::spawn_blocking(move || reader::PlaylistStore::load(
                         &playlist_path_c
                     )),
                     tokio::task::spawn_blocking(move || FavoritesStore::load(&favorites_path_c)),
+                    tokio::task::spawn_blocking(move || {
+                        PersistedQueueState::load(&queue_state_path_c)
+                    }),
                 );
 
                 if let Ok(Ok(loaded)) = lib_res {
@@ -407,7 +704,9 @@ fn App() -> Element {
                 }
                 if let Ok(loaded) = cfg_res {
                     config.set(loaded.clone());
+                    configured_music_dirs.set(loaded.music_directory.clone());
                     volume.set(loaded.volume);
+                    persisted_volume.set(loaded.volume);
                     player.write().set_volume(loaded.volume);
                     player.write().set_equalizer(loaded.equalizer.clone());
                     i18n::set_locale(&loaded.language);
@@ -434,19 +733,32 @@ fn App() -> Element {
                     }
                 }
 
+                if let Ok(Ok(loaded_queue_state)) = queue_res {
+                    if let Some(queue_state) = sanitize_queue_state(loaded_queue_state) {
+                        ctrl.restore_queue_state(
+                            queue_state.queue,
+                            queue_state.current_queue_index,
+                            queue_state.progress_secs,
+                        );
+                    }
+                }
+
                 initial_load_done.set(true);
             });
         }
         #[cfg(target_arch = "wasm32")]
         {
+            let mut ctrl = ctrl;
             let mut loaded = load_web_config().unwrap_or_default();
             if loaded.server.is_none() {
                 loaded.active_source = config::MusicSource::Server;
             }
             let loaded_volume = loaded.volume;
             let loaded_language = loaded.language.clone();
+            configured_music_dirs.set(loaded.music_directory.clone());
             config.set(loaded);
             volume.set(loaded_volume);
+            persisted_volume.set(loaded_volume);
             player.write().set_volume(loaded_volume);
             i18n::set_locale(&loaded_language);
 
@@ -473,6 +785,15 @@ fn App() -> Element {
             }
             if let Some(loaded_favorites) = load_web_favorites() {
                 favorites_store.set(loaded_favorites);
+            }
+            if let Some(loaded_queue_state) = load_web_queue_state() {
+                if let Some(queue_state) = sanitize_queue_state(loaded_queue_state) {
+                    ctrl.restore_queue_state(
+                        queue_state.queue,
+                        queue_state.current_queue_index,
+                        queue_state.progress_secs,
+                    );
+                }
             }
 
             initial_load_done.set(true);
@@ -506,7 +827,7 @@ fn App() -> Element {
         if !*initial_load_done.read() {
             return;
         }
-        let configured_dirs = config.read().music_directory.clone();
+        let configured_dirs = configured_music_dirs.read().clone();
         let _ = trigger_rescan.read();
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -530,10 +851,30 @@ fn App() -> Element {
             }
 
             if !configured_dirs.is_empty() {
+                scan_current_file.set(Some(String::new()));
+
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                spawn(async move {
+                    while let Some(file) = rx.recv().await {
+                        scan_current_file.set(Some(file));
+                    }
+                    scan_current_file.set(None);
+                });
+
+                let progress_cb: std::sync::Arc<dyn Fn(String) + Send + Sync> =
+                    std::sync::Arc::new(move |file: String| {
+                        let _ = tx.send(file);
+                    });
                 for dir in &scannable_dirs {
-                    let _ =
-                        reader::scan_directory(dir.clone(), cover_cache(), &mut current_lib).await;
+                    let _ = reader::scan_directory(
+                        dir.clone(),
+                        cover_cache(),
+                        &mut current_lib,
+                        progress_cb.clone(),
+                    )
+                    .await;
                 }
+                drop(progress_cb);
 
                 current_lib.tracks.retain(|t| {
                     let in_configured_root = configured_dirs.iter().any(|d| t.path.starts_with(d));
@@ -570,26 +911,6 @@ fn App() -> Element {
         );
     });
 
-    let mut queue = use_signal(Vec::<reader::Track>::new);
-    let current_queue_index = use_signal(|| 0usize);
-
-    let mut ctrl = hooks::use_player_controller(
-        player,
-        is_playing,
-        queue,
-        current_queue_index,
-        current_song_title,
-        current_song_artist,
-        current_song_album,
-        current_song_khz,
-        current_song_bitrate,
-        current_song_duration,
-        current_song_progress,
-        current_song_cover_url,
-        volume,
-        library,
-        config,
-    );
     provide_context(ctrl);
     provide_context(config);
 
@@ -658,6 +979,29 @@ fn App() -> Element {
             },
             if cfg!(target_os = "linux") {
                 div { dir: "ltr", Titlebar {} }
+            }
+            if config.read().active_source == config::MusicSource::Local {
+                if let Some(file) = scan_current_file.read().clone() {
+                    div {
+                        class: "flex-shrink-0",
+                        div {
+                            class: "h-[2px] bg-white/5 overflow-hidden",
+                            div { class: "h-full w-1/4 bg-[var(--color-primary,#6366f1)] animate-scan" }
+                        }
+                        div {
+                            class: "px-3 py-[3px] flex items-center gap-2 bg-black/30 border-b border-white/5",
+                            i { class: "fa-solid fa-compact-disc fa-spin text-[9px] text-white/30 flex-shrink-0" }
+                            span {
+                                class: "text-[10px] text-white/35 font-mono truncate",
+                                if file.is_empty() {
+                                    "Scanning library…"
+                                } else {
+                                    "{file}"
+                                }
+                            }
+                        }
+                    }
+                }
             }
             div {
                 class: "{content_row_class}",
@@ -876,6 +1220,7 @@ fn App() -> Element {
                 current_song_artist: current_song_artist,
                 current_song_cover_url: current_song_cover_url,
                 volume: volume,
+                persisted_volume: persisted_volume,
                 palette: palette,
             }
             Bottombar {
@@ -893,6 +1238,7 @@ fn App() -> Element {
                 queue: queue,
                 current_queue_index: current_queue_index,
                 volume: volume,
+                persisted_volume: persisted_volume,
                 is_rightbar_open: is_rightbar_open,
             }
         }

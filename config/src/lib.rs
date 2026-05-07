@@ -221,6 +221,17 @@ impl EqPreset {
             Self::Loudness => [4.0, 2.0, 0.5, 2.5, 4.0],
         }
     }
+
+    pub const fn default_preamp_db(self) -> Option<f32> {
+        match self {
+            Self::Flat => Some(0.0),
+            Self::BassBoost => Some(-4.0),
+            Self::TrebleBoost => Some(-2.0),
+            Self::VocalBoost => Some(-1.5),
+            Self::Loudness => Some(-5.0),
+            Self::Custom => None,
+        }
+    }
 }
 
 fn default_eq_bands() -> [f32; 5] {
@@ -258,6 +269,14 @@ impl Default for EqualizerSettings {
             preamp_db: 0.0,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+pub enum TitlebarMode {
+    #[default]
+    Custom,
+    System,
+    Off,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -308,6 +327,8 @@ pub struct AppConfig {
     pub ytdlp_options: YtdlpOptions,
     #[serde(default)]
     pub ytdlp_history: Vec<YtdlpHistoryEntry>,
+    #[serde(default)]
+    pub titlebar_mode: TitlebarMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -430,6 +451,7 @@ impl Default for AppConfig {
             ytdlp_output_dir: String::new(),
             ytdlp_options: YtdlpOptions::default(),
             ytdlp_history: Vec::new(),
+            titlebar_mode: TitlebarMode::Custom,
         }
     }
 }

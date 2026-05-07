@@ -233,6 +233,8 @@ pub fn Album(
                                                         id: new_id,
                                                         name: playlist_name,
                                                         tracks: item_ids,
+                                                        image_tag: None,
+                                                        cover_path: None,
                                                     });
                                                 }
                                             });
@@ -243,6 +245,7 @@ pub fn Album(
                                             id: uuid::Uuid::new_v4().to_string(),
                                             name,
                                             tracks,
+                                            cover_path: None,
                                         });
                                     }
                                 }

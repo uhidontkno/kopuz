@@ -6,6 +6,7 @@ use player::player::{NowPlayingMeta, Player};
 use reader::{Library, Track};
 use scrobble;
 use utils;
+use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use player::decoder;
@@ -36,6 +37,7 @@ pub struct PlayerController {
     pub history: Signal<Vec<usize>>,
     pub queue: Signal<Vec<Track>>,
     pub shuffle: Signal<bool>,
+    pub shuffle_order: Signal<Vec<usize>>,
     pub loop_mode: Signal<LoopMode>,
     pub current_queue_index: Signal<usize>,
     pub current_song_title: Signal<String>,
@@ -50,9 +52,156 @@ pub struct PlayerController {
     pub library: Signal<Library>,
     pub config: Signal<AppConfig>,
     pub play_generation: Signal<usize>,
+    pending_resume: Signal<Option<PendingResumeState>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingResumeState {
+    track_path: String,
+    progress_secs: u64,
 }
 
 impl PlayerController {
+    fn track_key(track: &Track) -> String {
+        track.path.to_string_lossy().to_string()
+    }
+
+    fn current_track(&self, idx: usize) -> Option<Track> {
+        self.queue.peek().get(idx).cloned()
+    }
+
+    fn cover_url_for_track(&self, track: &Track) -> String {
+        let path_str = Self::track_key(track);
+        let scheme = path_str
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        match scheme.as_str() {
+            "jellyfin" => self
+                .config
+                .read()
+                .server
+                .as_ref()
+                .and_then(|server| {
+                    utils::jellyfin_image::jellyfin_image_url_from_path(
+                        &path_str,
+                        &server.url,
+                        server.access_token.as_deref(),
+                        800,
+                        90,
+                    )
+                })
+                .unwrap_or_default(),
+            "subsonic" | "custom" => self
+                .config
+                .read()
+                .server
+                .as_ref()
+                .and_then(|server| {
+                    utils::subsonic_image::subsonic_image_url_from_path(
+                        &path_str,
+                        &server.url,
+                        server.access_token.as_deref(),
+                        800,
+                        90,
+                    )
+                })
+                .unwrap_or_default(),
+            _ => self
+                .library
+                .read()
+                .albums
+                .iter()
+                .find(|album| album.id == track.album_id)
+                .and_then(|album| utils::format_artwork_url(album.cover_path.as_ref()))
+                .unwrap_or_default(),
+        }
+    }
+
+    fn clear_current_track_metadata(&mut self) {
+        self.current_song_title.set(String::new());
+        self.current_song_artist.set(String::new());
+        self.current_song_album.set(String::new());
+        self.current_song_khz.set(0);
+        self.current_song_bitrate.set(0);
+        self.current_song_duration.set(0);
+        self.current_song_progress.set(0);
+        self.current_song_cover_url.set(String::new());
+    }
+
+    fn hydrate_current_track_metadata(&mut self, idx: usize, progress_secs: u64) {
+        if let Some(track) = self.current_track(idx) {
+            let progress_secs = progress_secs.min(track.duration);
+            self.current_queue_index.set(idx);
+            self.current_song_title.set(track.title.clone());
+            self.current_song_artist.set(track.artist.clone());
+            self.current_song_album.set(track.album.clone());
+            self.current_song_khz.set(track.khz);
+            self.current_song_bitrate.set(track.bitrate);
+            self.current_song_duration.set(track.duration);
+            self.current_song_progress.set(progress_secs);
+            self.current_song_cover_url.set(self.cover_url_for_track(&track));
+        } else {
+            self.current_queue_index.set(0);
+            self.clear_current_track_metadata();
+        }
+    }
+
+    fn pending_resume_seek(&self, track: &Track) -> (Option<u64>, bool) {
+        let pending = self.pending_resume.read().clone();
+        let restore_seek_secs = pending.as_ref().and_then(|pending| {
+            if pending.track_path == Self::track_key(track) {
+                Some(pending.progress_secs.min(track.duration))
+            } else {
+                None
+            }
+        });
+
+        (restore_seek_secs, pending.is_some())
+    }
+
+    fn clear_pending_resume(&mut self) {
+        self.pending_resume.set(None);
+    }
+
+    fn set_pending_resume_for_track(&mut self, track: &Track, progress_secs: u64) {
+        self.pending_resume.set(Some(PendingResumeState {
+            track_path: Self::track_key(track),
+            progress_secs: progress_secs.min(track.duration),
+        }));
+    }
+
+    fn apply_restore_seek(&mut self, seek_secs: u64) {
+        self.player.write().seek(Duration::from_secs(seek_secs));
+        self.current_song_progress.set(seek_secs);
+    }
+
+    /// Remap a queue index after moving one item within the queue.
+    ///
+    /// `index` is the position to remap, `from` is the original position of the moved item,
+    /// and `to` is its destination after the move.
+    ///
+    /// Returns the new position for `index` after applying the move:
+    /// - if `index == from`, this is the moved item itself, so it now lives at `to`
+    /// - if the item moved forward (`from < to`), every item that was between `from + 1`
+    ///   and `to` shifts left by one slot
+    /// - if the item moved backward (`to < from`), every item that was between `to`
+    ///   and `from - 1` shifts right by one slot
+    /// - all other indices are unaffected
+    fn remap_queue_index(index: usize, from: usize, to: usize) -> usize {
+        if index == from {
+            to
+        } else if from < to && index > from && index <= to {
+            index - 1
+        } else if to < from && index >= to && index < from {
+            index + 1
+        } else {
+            index
+        }
+    }
+
     pub fn play_track(&mut self, idx: usize) {
         let current_idx = *self.current_queue_index.peek();
         self.history.with_mut(|h| {
@@ -67,10 +216,10 @@ impl PlayerController {
         self.play_generation.with_mut(|g| *g += 1);
         let current_gen = *self.play_generation.peek();
 
-        let q = self.queue.peek();
-        if idx < q.len() {
-            let track = q[idx].clone();
+        if let Some(track) = self.current_track(idx) {
             let path_str = track.path.to_string_lossy().to_string();
+            let (restore_seek_secs, clear_pending_resume_on_success) =
+                self.pending_resume_seek(&track);
             let scheme = path_str
                 .split(':')
                 .next()
@@ -82,9 +231,9 @@ impl PlayerController {
                 let parts: Vec<&str> = path_str.split(':').collect();
                 let id = parts.get(1).unwrap_or(&"").to_string();
 
-                let conf = self.config.read();
-                if let Some(server) = &conf.server {
-                    let (stream_url, cover_url) = match server.service {
+                if let Some((stream_url, cover_url)) = {
+                    let conf = self.config.read();
+                    conf.server.as_ref().map(|server| match server.service {
                         MusicService::Jellyfin => {
                             let mut stream_url =
                                 format!("{}/Audio/{}/stream?static=true", server.url, id);
@@ -133,7 +282,8 @@ impl PlayerController {
 
                             (stream_url, cover_url)
                         }
-                    };
+                    })
+                } {
 
                     if stream_url.is_empty() {
                         self.is_loading.set(false);
@@ -150,15 +300,12 @@ impl PlayerController {
                     let mut skip_in_progress = self.skip_in_progress;
                     let play_generation = self.play_generation;
                     let volume = self.volume;
+                    let mut current_song_progress = self.current_song_progress;
+                    let mut pending_resume = self.pending_resume;
                     let cfg_signal = self.config;
 
-                    self.current_song_title.set(track.title.clone());
-                    self.current_song_artist.set(track.artist.clone());
-                    self.current_song_album.set(track.album.clone());
-                    self.current_song_duration.set(track.duration);
-                    self.current_song_progress.set(0);
+                    self.hydrate_current_track_metadata(idx, 0);
                     self.current_song_cover_url.set(cover_url.clone());
-                    self.current_queue_index.set(idx);
 
                     self.is_loading.set(true);
 
@@ -188,6 +335,15 @@ impl PlayerController {
                                     return;
                                 }
                                 player.write().set_volume(*volume.peek());
+                                if let Some(seek_secs) = restore_seek_secs {
+                                    if seek_secs > 0 {
+                                        player.write().seek(Duration::from_secs(seek_secs));
+                                        current_song_progress.set(seek_secs);
+                                    }
+                                }
+                                if clear_pending_resume_on_success {
+                                    pending_resume.set(None);
+                                }
                                 is_loading.set(false);
                                 is_playing.set(true);
                                 skip_in_progress.set(false);
@@ -320,86 +476,105 @@ impl PlayerController {
                                 artwork: Some(cover_url.clone()),
                             };
 
-                            player.write().play_url(stream_url, meta);
-                            player.write().set_volume(*volume.peek());
+                            let started = {
+                                let mut player = player.write();
+                                player.play_url(stream_url, meta);
+                                player.set_volume(*volume.peek());
+                                if let Some(seek_secs) = restore_seek_secs {
+                                    if seek_secs > 0 && player.can_resume() {
+                                        player.seek(Duration::from_secs(seek_secs));
+                                        current_song_progress.set(seek_secs);
+                                    }
+                                }
+                                player.can_resume()
+                            };
+                            if started && clear_pending_resume_on_success {
+                                pending_resume.set(None);
+                            }
                             is_loading.set(false);
-                            is_playing.set(true);
+                            is_playing.set(started);
                             skip_in_progress.set(false);
 
-                            let scrobble_track = track.clone();
-                            let scrobble_gen = current_gen;
-                            let scrobble_play_gen = play_generation;
-                            let scrobble_cfg = cfg_signal;
-                            let duration_secs = scrobble_track.duration;
-                            let threshold_secs = std::cmp::min(240, (duration_secs / 2) as u64);
+                            if started {
+                                let scrobble_track = track.clone();
+                                let scrobble_gen = current_gen;
+                                let scrobble_play_gen = play_generation;
+                                let scrobble_cfg = cfg_signal;
+                                let duration_secs = scrobble_track.duration;
+                                let threshold_secs =
+                                    std::cmp::min(240, (duration_secs / 2) as u64);
 
-                            spawn(async move {
-                                let token_raw = scrobble_cfg.read().musicbrainz_token.clone();
-                                if !token_raw.is_empty() {
+                                spawn(async move {
+                                    let token_raw = scrobble_cfg.read().musicbrainz_token.clone();
+                                    if !token_raw.is_empty() {
+                                        let auth = if token_raw.contains(' ') {
+                                            token_raw.clone()
+                                        } else {
+                                            format!("Token {}", token_raw)
+                                        };
+
+                                        let playing_now = scrobble::musicbrainz::make_playing_now(
+                                            &scrobble_track.artist,
+                                            &scrobble_track.title,
+                                            Some(&scrobble_track.album),
+                                        );
+
+                                        if let Err(e) = scrobble::musicbrainz::submit_listens(
+                                            &auth,
+                                            vec![playing_now],
+                                            "playing_now",
+                                        )
+                                        .await
+                                        {
+                                            tracing::warn!(
+                                                "Jellyfin: failed to submit playing_now: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+
+                                    utils::sleep(std::time::Duration::from_secs(threshold_secs))
+                                        .await;
+
+                                    if *scrobble_play_gen.read() != scrobble_gen {
+                                        return;
+                                    }
+
+                                    let token_raw = scrobble_cfg.read().musicbrainz_token.clone();
+                                    if token_raw.is_empty() {
+                                        return;
+                                    }
+
                                     let auth = if token_raw.contains(' ') {
-                                        token_raw.clone()
+                                        token_raw
                                     } else {
                                         format!("Token {}", token_raw)
                                     };
 
-                                    let playing_now = scrobble::musicbrainz::make_playing_now(
+                                    let listen = scrobble::musicbrainz::make_listen(
                                         &scrobble_track.artist,
                                         &scrobble_track.title,
                                         Some(&scrobble_track.album),
                                     );
 
-                                    if let Err(e) = scrobble::musicbrainz::submit_listens(
+                                    match scrobble::musicbrainz::submit_listens(
                                         &auth,
-                                        vec![playing_now],
-                                        "playing_now",
+                                        vec![listen],
+                                        "single",
                                     )
                                     .await
                                     {
-                                        tracing::warn!(
-                                            "Jellyfin: failed to submit playing_now: {}",
-                                            e
-                                        );
+                                        Ok(_) => tracing::info!(
+                                            "Jellyfin scrobbled: {} - {}",
+                                            scrobble_track.artist,
+                                            scrobble_track.title
+                                        ),
+                                        Err(e) => {
+                                            tracing::warn!("Jellyfin scrobble failed: {}", e)
+                                        }
                                     }
-                                }
-
-                                utils::sleep(std::time::Duration::from_secs(threshold_secs)).await;
-
-                                if *scrobble_play_gen.read() != scrobble_gen {
-                                    return;
-                                }
-
-                                let token_raw = scrobble_cfg.read().musicbrainz_token.clone();
-                                if token_raw.is_empty() {
-                                    return;
-                                }
-
-                                let auth = if token_raw.contains(' ') {
-                                    token_raw
-                                } else {
-                                    format!("Token {}", token_raw)
-                                };
-
-                                let listen = scrobble::musicbrainz::make_listen(
-                                    &scrobble_track.artist,
-                                    &scrobble_track.title,
-                                    Some(&scrobble_track.album),
-                                );
-
-                                match scrobble::musicbrainz::submit_listens(
-                                    &auth,
-                                    vec![listen],
-                                    "single",
-                                )
-                                .await
-                                {
-                                    Ok(_) => tracing::info!(
-                                        "Jellyfin scrobbled: {} - {}",
-                                        scrobble_track.artist,
-                                        scrobble_track.title
-                                    ),
-                                    Err(e) => tracing::warn!("Jellyfin scrobble failed: {}", e),
-                                }
-                            });
+                                });
+                            }
                         } else {
                             is_loading.set(false);
                             skip_in_progress.set(false);
@@ -417,13 +592,17 @@ impl PlayerController {
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Ok((source, hint)) = decoder::open_file(&track.path) {
                     {
-                        let lib = self.library.peek();
-                        let album = lib.albums.iter().find(|a| a.id == track.album_id);
-                        let artwork = album.and_then(|a| {
-                            a.cover_path
-                                .as_ref()
-                                .map(|p| p.to_string_lossy().into_owned())
-                        });
+                        let artwork = {
+                            let lib = self.library.peek();
+                            lib.albums
+                                .iter()
+                                .find(|a| a.id == track.album_id)
+                                .and_then(|a| {
+                                    a.cover_path
+                                        .as_ref()
+                                        .map(|p| p.to_string_lossy().into_owned())
+                                })
+                        };
 
                         let meta = NowPlayingMeta {
                             title: track.title.clone(),
@@ -442,26 +621,18 @@ impl PlayerController {
 
                         self.skip_in_progress.set(false);
 
-                        self.current_song_title.set(track.title.clone());
-                        self.current_song_artist.set(track.artist.clone());
-                        self.current_song_album.set(track.album.clone());
-                        self.current_song_khz.set(track.khz);
-                        self.current_song_bitrate.set(track.bitrate);
-                        self.current_song_duration.set(track.duration);
-                        self.current_song_progress.set(0);
-
-                        if let Some(album) = album {
-                            if let Some(url) = utils::format_artwork_url(album.cover_path.as_ref())
-                            {
-                                self.current_song_cover_url.set(url);
-                            } else {
-                                self.current_song_cover_url.set(String::new());
-                            }
-                        } else {
-                            self.current_song_cover_url.set(String::new());
-                        }
+                        self.hydrate_current_track_metadata(idx, 0);
 
                         self.is_playing.set(true);
+
+                        if let Some(seek_secs) = restore_seek_secs {
+                            if seek_secs > 0 {
+                                self.apply_restore_seek(seek_secs);
+                            }
+                        }
+                        if clear_pending_resume_on_success {
+                            self.clear_pending_resume();
+                        }
 
                         let cfg_signal = self.config;
                         let play_generation_signal = self.play_generation;
@@ -558,13 +729,19 @@ impl PlayerController {
             }
             _ => {
                 if shuffle && queue_len > 1 {
-                    let mut rng = rand::thread_rng();
-                    use rand::Rng;
-                    let mut next_idx = rng.gen_range(0..queue_len);
-                    while next_idx == idx {
-                        next_idx = rng.gen_range(0..queue_len);
+                    let next_idx = self.shuffle_order.with_mut(|order| order.pop());
+                    match next_idx {
+                        Some(i) => self.play_track(i),
+                        None => {
+                            if loop_mode == LoopMode::Queue {
+                                self.rebuild_shuffle_order();
+                                let i = self.shuffle_order.with_mut(|order| order.pop()).unwrap_or(0);
+                                self.play_track(i);
+                            } else {
+                                self.is_playing.set(false);
+                            }
+                        }
                     }
-                    self.play_track(next_idx);
                 } else if shuffle && queue_len == 1 {
                     self.play_track(0);
                 } else if idx + 1 < queue_len {
@@ -609,8 +786,21 @@ impl PlayerController {
         }
     }
 
+    fn rebuild_shuffle_order(&mut self) {
+        use rand::seq::SliceRandom;
+        let queue_len = self.queue.peek().len();
+        let current = *self.current_queue_index.peek();
+        let mut order: Vec<usize> = (0..queue_len).filter(|&i| i != current).collect();
+        order.shuffle(&mut rand::thread_rng());
+        self.shuffle_order.set(order);
+    }
+
     pub fn toggle_shuffle(&mut self) {
-        self.shuffle.with_mut(|s| *s = !*s);
+        let now_on = !*self.shuffle.peek();
+        self.shuffle.set(now_on);
+        if now_on {
+            self.rebuild_shuffle_order();
+        }
     }
 
     pub fn toggle_loop(&mut self) {
@@ -623,6 +813,16 @@ impl PlayerController {
     }
 
     pub fn resume(&mut self) {
+        if !self.player.peek().can_resume() {
+            let idx = *self.current_queue_index.peek();
+            if let Some(track) = self.current_track(idx) {
+                let progress_secs = (*self.current_song_progress.peek()).min(track.duration);
+                self.set_pending_resume_for_track(&track, progress_secs);
+                self.play_track_no_history(idx);
+            }
+            return;
+        }
+
         self.player.write().play_resume();
         self.is_playing.set(true);
     }
@@ -633,6 +833,57 @@ impl PlayerController {
         } else {
             self.resume();
         }
+    }
+
+    pub fn move_queue_item(&mut self, from: usize, to: usize) {
+        let len = self.queue.peek().len();
+        if from >= len || to >= len || from == to {
+            return;
+        }
+
+        self.queue.with_mut(|queue| {
+            let track = queue.remove(from);
+            queue.insert(to, track);
+        });
+
+        let current_idx = *self.current_queue_index.peek();
+        self.current_queue_index
+            .set(Self::remap_queue_index(current_idx, from, to));
+
+        self.history.with_mut(|history| {
+            for idx in history.iter_mut() {
+                *idx = Self::remap_queue_index(*idx, from, to);
+            }
+        });
+    }
+
+    pub fn restore_queue_state(
+        &mut self,
+        queue: Vec<Track>,
+        current_queue_index: usize,
+        progress_secs: u64,
+    ) {
+        self.player.write().stop();
+        self.is_playing.set(false);
+        self.is_loading.set(false);
+        self.skip_in_progress.set(false);
+        self.history.set(Vec::new());
+        self.queue.set(queue);
+
+        let queue_len = self.queue.peek().len();
+        if queue_len == 0 {
+            self.current_queue_index.set(0);
+            self.pending_resume.set(None);
+            self.clear_current_track_metadata();
+            return;
+        }
+
+        let idx = current_queue_index.min(queue_len - 1);
+        let track = self.current_track(idx).expect("queue index should be valid");
+        let progress_secs = progress_secs.min(track.duration);
+
+        self.hydrate_current_track_metadata(idx, progress_secs);
+        self.set_pending_resume_for_track(&track, progress_secs);
     }
 }
 
@@ -658,7 +909,9 @@ pub fn use_player_controller(
     let skip_in_progress = use_signal(|| false);
     let history = use_signal(|| Vec::new());
     let shuffle = use_signal(|| false);
+    let shuffle_order = use_signal(|| Vec::<usize>::new());
     let loop_mode = use_signal(|| LoopMode::None);
+    let pending_resume = use_signal(|| None::<PendingResumeState>);
 
     PlayerController {
         player,
@@ -668,6 +921,7 @@ pub fn use_player_controller(
         history,
         queue,
         shuffle,
+        shuffle_order,
         loop_mode,
         current_queue_index,
         current_song_title,
@@ -682,5 +936,6 @@ pub fn use_player_controller(
         library,
         config,
         play_generation,
+        pending_resume,
     }
 }

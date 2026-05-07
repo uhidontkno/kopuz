@@ -1,11 +1,11 @@
+use ::server::jellyfin::JellyfinClient;
+use ::server::subsonic::SubsonicClient;
 use components::dots_menu::{DotsMenu, MenuAction};
 use components::playlist_modal::PlaylistModal;
 use components::selection_bar::SelectionBar;
 use config::{AppConfig, ArtistViewOrder, MusicService};
 use dioxus::prelude::*;
 use reader::{Library, PlaylistStore};
-use ::server::jellyfin::JellyfinClient;
-use ::server::subsonic::SubsonicClient;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -41,10 +41,15 @@ pub fn JellyfinArtist(
 
     let jellyfin_artists = use_memo(move || {
         let lib = library.read();
-        let mut artist_map = HashMap::new();
+        let mut artist_map: HashMap<String, Option<PathBuf>> = HashMap::new();
         for album in &lib.jellyfin_albums {
             if !artist_map.contains_key(&album.artist) {
                 artist_map.insert(album.artist.clone(), album.cover_path.clone());
+            }
+        }
+        for name in artist_map.keys().cloned().collect::<Vec<_>>() {
+            if let Some(url) = lib.server_artist_images.get(&name) {
+                artist_map.insert(name, Some(PathBuf::from(format!("directurl:{}", url))));
             }
         }
         let mut artists: Vec<_> = artist_map.into_iter().collect();
@@ -71,6 +76,9 @@ pub fn JellyfinArtist(
         let artist = artist_name.read();
         if artist.is_empty() {
             return None;
+        }
+        if let Some(url) = lib.server_artist_images.get(artist.as_str()) {
+            return Some(url.clone());
         }
         lib.jellyfin_albums
             .iter()
@@ -156,6 +164,7 @@ pub fn JellyfinArtist(
                                 div {
                                     key: "{artist}",
                                     class: "group cursor-pointer flex flex-col items-center",
+                                    style: "content-visibility: auto; contain-intrinsic-size: 0 180px;",
                                     onclick: move |_| artist_name.set(art.clone()),
                                     div { class: "aspect-square w-full rounded-full bg-stone-800 mb-4 overflow-hidden relative transition-all",
                                         if let Some(url) = cover_url {
@@ -468,6 +477,7 @@ pub fn JellyfinArtist(
                                                     div {
                                                         key: "{album.id}",
                                                         class: "group relative p-4 bg-white/5 rounded-xl hover:bg-white/10 transition-colors",
+                                                        style: "content-visibility: auto; contain-intrinsic-size: 0 230px;",
                                                         onclick: move |_| on_navigate.call(id_for_navigate.clone()),
                                                         oncontextmenu: {
                                                             let id = id_for_menu.clone();

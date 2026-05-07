@@ -47,7 +47,9 @@ pub struct Library {
     #[serde(default)]
     pub jellyfin_albums: Vec<Album>,
     #[serde(default)]
-    pub jellyfin_genres: Vec<(String, String)>, // (Name, ID)
+    pub jellyfin_genres: Vec<(String, String)>,
+    #[serde(default)]
+    pub server_artist_images: std::collections::HashMap<String, String>,
 }
 
 fn deserialize_root_paths<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
@@ -147,6 +149,8 @@ pub struct Playlist {
     pub id: String,
     pub name: String,
     pub tracks: Vec<PathBuf>,
+    #[serde(default)]
+    pub cover_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -154,6 +158,10 @@ pub struct JellyfinPlaylist {
     pub id: String,
     pub name: String,
     pub tracks: Vec<String>,
+    #[serde(default)]
+    pub image_tag: Option<String>,
+    #[serde(default)]
+    pub cover_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

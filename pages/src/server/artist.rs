@@ -1,5 +1,6 @@
 use ::server::jellyfin::JellyfinClient;
 use ::server::subsonic::SubsonicClient;
+use crate::server::download_manager::{DownloadQueue, queue_downloads};
 use components::dots_menu::{DotsMenu, MenuAction};
 use components::playlist_modal::PlaylistModal;
 use components::selection_bar::SelectionBar;
@@ -26,6 +27,7 @@ pub fn JellyfinArtist(
 
     let mut is_selection_mode = use_signal(|| false);
     let mut selected_tracks = use_signal(|| HashSet::<PathBuf>::new());
+    let download_queue = use_context::<Signal<DownloadQueue>>();
 
     let sort_order = use_signal(move || config.read().artist_view_order.clone());
     use_effect(move || {
@@ -448,8 +450,10 @@ pub fn JellyfinArtist(
                         } else {
                             {
                                 let add_all_to_playlist_text = i18n::t("add_all_to_playlist").to_string();
+                                let download_album_text = "Download Album".to_string();
                                 let album_menu_actions = vec![
                                     MenuAction::new(add_all_to_playlist_text.as_str(), "fa-solid fa-list-music"),
+                                    MenuAction::new(download_album_text.as_str(), "fa-solid fa-download"),
                                 ];
                                 rsx! {
                                     div { class: "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6",
@@ -522,6 +526,20 @@ pub fn JellyfinArtist(
                                                                         if idx == 0 {
                                                                             pending_album_id_for_playlist.set(Some(id.clone()));
                                                                             show_album_playlist_modal.set(true);
+                                                                        } else if idx == 1 {
+                                                                            let album_id = id.clone();
+                                                                            let requests: Vec<(String, String, String)> = {
+                                                                                let lib = library.read();
+                                                                                lib.jellyfin_tracks
+                                                                                    .iter()
+                                                                                    .filter(|t| t.album_id == album_id)
+                                                                                    .filter_map(|t| {
+                                                                                        let s = t.path.to_string_lossy().to_string();
+                                                                                        s.split(':').nth(1).map(|id| (id.to_string(), t.title.clone(), t.artist.clone()))
+                                                                                    })
+                                                                                    .collect()
+                                                                            };
+                                                                            queue_downloads(requests, config, download_queue);
                                                                         }
                                                                     }
                                                                 },
@@ -594,6 +612,17 @@ pub fn JellyfinArtist(
                                     }
                                 },
                                 on_delete_track: move |_| active_menu_track.set(None),
+                                on_download_all: move |_| {
+                                    let requests: Vec<(String, String, String)> = artist_tracks()
+                                        .iter()
+                                        .filter_map(|t| {
+                                            let s = t.path.to_string_lossy().to_string();
+                                            s.split(':').nth(1).map(|id| (id.to_string(), t.title.clone(), t.artist.clone()))
+                                        })
+                                        .collect();
+                                    queue_downloads(requests, config, download_queue);
+                                },
+                                is_downloading_all: download_queue.read().is_active(),
                                 actions: Some(rsx! {
                                     SortOrderToggle { sort_order }
                                 }),

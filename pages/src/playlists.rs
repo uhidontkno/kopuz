@@ -9,6 +9,7 @@ use ::server::jellyfin::JellyfinClient;
 use ::server::subsonic::SubsonicClient;
 
 use crate::local::playlists::LocalPlaylists;
+use crate::server::download_manager::{DownloadQueue, DownloadStatus, queue_downloads};
 use crate::server::playlists::ServerPlaylists;
 
 #[component]
@@ -91,6 +92,8 @@ pub fn PlaylistsPage(
         }
     };
 
+    let download_queue = use_context::<Signal<DownloadQueue>>();
+
     let mut last_source = use_signal(|| config.read().active_source.clone());
     if *last_source.read() != config.read().active_source {
         selected_playlist_id.set(None);
@@ -111,22 +114,59 @@ pub fn PlaylistsPage(
                     on_close: move |_| selected_folder.set(None),
                 }
             } else if let Some(pid) = selected_playlist_id.read().clone() {
-                PlaylistDetail {
-                    playlist_id: pid,
-                    playlist_store,
-                    library,
-                    config,
-                    player,
-                    is_playing,
-                    current_playing,
-                    current_song_cover_url,
-                    current_song_title,
-                    current_song_artist,
-                    current_song_duration,
-                    current_song_progress,
-                    queue,
-                    current_queue_index,
-                    on_close: move |_| selected_playlist_id.set(None),
+                {
+                    let pid_for_dl = pid.clone();
+                    let is_downloading_all = {
+                        let store = playlist_store.read();
+                        let track_ids = store.jellyfin_playlists
+                            .iter()
+                            .find(|p| p.id == pid)
+                            .map(|p| p.tracks.clone())
+                            .unwrap_or_default();
+                        let q = download_queue.read();
+                        track_ids.iter().any(|tid| q.items.iter().any(|i| &i.id == tid && matches!(i.status, DownloadStatus::Queued | DownloadStatus::Downloading)))
+                    };
+                    rsx! {
+                        PlaylistDetail {
+                            playlist_id: pid,
+                            playlist_store,
+                            library,
+                            config,
+                            player,
+                            is_playing,
+                            current_playing,
+                            current_song_cover_url,
+                            current_song_title,
+                            current_song_artist,
+                            current_song_duration,
+                            current_song_progress,
+                            queue,
+                            current_queue_index,
+                            on_close: move |_| selected_playlist_id.set(None),
+                            is_downloading_all,
+                            on_download_all: move |_| {
+                                let requests: Vec<(String, String, String)> = {
+                                    let store = playlist_store.read();
+                                    let lib = library.read();
+                                    store.jellyfin_playlists
+                                        .iter()
+                                        .find(|p| p.id == pid_for_dl)
+                                        .map(|p| p.tracks.iter().map(|tid| {
+                                            let meta = lib.jellyfin_tracks.iter()
+                                                .find(|t| t.path.to_string_lossy().contains(tid.as_str()));
+                                            (
+                                                tid.clone(),
+                                                meta.map(|t| t.title.clone()).unwrap_or_default(),
+                                                meta.map(|t| t.artist.clone()).unwrap_or_default(),
+                                            )
+                                        }).collect())
+                                        .unwrap_or_default()
+                                };
+                                if requests.is_empty() { return; }
+                                queue_downloads(requests, config, download_queue);
+                            },
+                        }
+                    }
                 }
             } else {
                 div { class: "flex items-center justify-between mb-8",

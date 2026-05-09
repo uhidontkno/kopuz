@@ -1,5 +1,6 @@
 use ::server::jellyfin::JellyfinClient;
 use ::server::subsonic::SubsonicClient;
+use crate::server::download_manager::{DownloadQueue, DownloadStatus, queue_downloads};
 use config::{AppConfig, MusicService};
 use dioxus::prelude::*;
 use reader::{Library, PlaylistStore};
@@ -14,6 +15,7 @@ pub fn JellyfinPlaylists(
 ) -> Element {
     let mut last_fetch_key = use_signal(|| None::<String>);
     let mut fetch_request_id = use_signal(|| 0u64);
+    let download_queue = use_context::<Signal<DownloadQueue>>();
 
     use_effect(move || {
         let fetch_context = {
@@ -177,14 +179,29 @@ pub fn JellyfinPlaylists(
                             }
                         };
 
+                        let playlist_id_nav = playlist.id.clone();
+                        let track_requests_dl: Vec<(String, String, String)> = {
+                            let lib = library.peek();
+                            playlist.tracks.iter().map(|tid| {
+                                let meta = lib.jellyfin_tracks.iter()
+                                    .find(|t| t.path.to_string_lossy().contains(tid.as_str()));
+                                (
+                                    tid.clone(),
+                                    meta.map(|t| t.title.clone()).unwrap_or_default(),
+                                    meta.map(|t| t.artist.clone()).unwrap_or_default(),
+                                )
+                            }).collect()
+                        };
+                        let is_dl = {
+                            let q = download_queue.read();
+                            playlist.tracks.iter().any(|tid| q.items.iter().any(|i| &i.id == tid && matches!(i.status, DownloadStatus::Queued | DownloadStatus::Downloading)))
+                        };
+
                         rsx! {
                             div {
                                 key: "{playlist.id}",
-                                class: "bg-white/5 border border-white/5 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group",
-                                onclick: {
-                                    let id = playlist.id.clone();
-                                    move |_| selected_playlist_id.set(Some(id.clone()))
-                                },
+                                class: "bg-white/5 border border-white/5 rounded-2xl p-6 hover:bg-white/10 transition-all cursor-pointer group relative",
+                                onclick: move |_| selected_playlist_id.set(Some(playlist_id_nav.clone())),
                                 div {
                                     class: "mb-4 w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden transition-all bg-white/5",
                                     if let Some(url) = cover_url {
@@ -203,6 +220,21 @@ pub fn JellyfinPlaylists(
                                 }
                                 h3 { class: "text-xl font-bold text-white mb-1 truncate", "{playlist.name}" }
                                 p { class: "text-sm text-slate-400", "Server • {playlist.tracks.len()} tracks" }
+
+                                button {
+                                    class: "absolute top-4 right-4 w-8 h-8 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:border-white/30 transition-colors opacity-0 group-hover:opacity-100",
+                                    title: "Download playlist for offline playback",
+                                    disabled: is_dl,
+                                    onclick: move |evt| {
+                                        evt.stop_propagation();
+                                        queue_downloads(track_requests_dl.clone(), config, download_queue);
+                                    },
+                                    if is_dl {
+                                        i { class: "fa-solid fa-spinner fa-spin text-xs" }
+                                    } else {
+                                        i { class: "fa-solid fa-download text-xs" }
+                                    }
+                                }
                             }
                         }
                     })}

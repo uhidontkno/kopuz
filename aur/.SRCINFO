@@ -17,8 +17,8 @@ pkgbase = kopuz
 	depends = xdotool
 	depends = dbus
 	depends = cmake
-	depends = libopus
+	depends = opus
 	source = kopuz-0.5.0.tar.gz::https://github.com/temidaradev/kopuz/archive/refs/tags/v0.5.0.tar.gz
-	sha256sums = 0935d1e7ea1e5377ea669ed460f530ca48f45d0448da88518951a1cf45705aeb
+	sha256sums = 100c042a73b436a84f751abf51721bb26b3223d45b5d892ba0c81d41751e4a28
 
 pkgname = kopuz

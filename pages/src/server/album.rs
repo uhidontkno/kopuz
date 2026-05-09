@@ -46,7 +46,7 @@ pub fn JellyfinAlbum(
             .into_iter()
             .map(|album| {
                 let cover_url = if let Some(server) = &conf.server {
-                    album.cover_path.as_ref().and_then(|cover_path| {
+                    utils::map_cover_url(album.cover_path.as_ref().and_then(|cover_path| {
                         let path_str = cover_path.to_string_lossy();
                         utils::jellyfin_image::jellyfin_image_url_from_path(
                             &path_str,
@@ -55,7 +55,7 @@ pub fn JellyfinAlbum(
                             360,
                             80,
                         )
-                    })
+                    }))
                 } else {
                     None
                 };
@@ -209,14 +209,14 @@ pub fn JellyfinAlbumDetails(
             .map(|t| {
                 let cover_url = if let Some(server) = &conf.server {
                     let path_str = t.path.to_string_lossy();
-                    utils::jellyfin_image::track_cover_url_with_album_fallback(
+                    utils::map_cover_url(utils::jellyfin_image::track_cover_url_with_album_fallback(
                         &path_str,
                         &t.album_id,
                         &server.url,
                         server.access_token.as_deref(),
                         80,
                         80,
-                    )
+                    ))
                 } else {
                     None
                 };
@@ -254,7 +254,7 @@ pub fn JellyfinAlbumDetails(
     let cover_url = {
         let conf = config.read();
         if let Some(server) = &conf.server {
-            album.as_ref().and_then(|a| {
+            utils::map_cover_url(album.as_ref().and_then(|a| {
                 a.cover_path.as_ref().and_then(|cover_path| {
                     let path_str = cover_path.to_string_lossy();
                     utils::jellyfin_image::jellyfin_image_url_from_path(
@@ -265,7 +265,7 @@ pub fn JellyfinAlbumDetails(
                         90,
                     )
                 })
-            })
+            }))
         } else {
             None
         }

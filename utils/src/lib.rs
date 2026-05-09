@@ -6,6 +6,17 @@ pub mod stream_buffer;
 pub mod subsonic_image;
 pub mod themes;
 use std::path::Path;
+use std::sync::Arc;
+
+pub type CoverUrl = Arc<str>;
+
+pub fn cover_url_from_string(url: String) -> CoverUrl {
+    Arc::from(url)
+}
+
+pub fn map_cover_url(url: Option<String>) -> Option<CoverUrl> {
+    url.map(cover_url_from_string)
+}
 
 /// Cross-platform async sleep that works on both native (tokio) and WASM (gloo-timers).
 pub async fn sleep(duration: std::time::Duration) {
@@ -19,7 +30,7 @@ pub async fn sleep(duration: std::time::Duration) {
     }
 }
 
-pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<String> {
+pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<CoverUrl> {
     path.and_then(|p| {
         let p = p.as_ref();
         let p_str = p.to_string_lossy();
@@ -30,7 +41,6 @@ pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<String> {
             p.to_path_buf()
         };
 
-        // Unix
         let abs_str = abs_path.to_string_lossy();
         let abs_str = if abs_str.starts_with('~') {
             if let Ok(home) = std::env::var("HOME") {
@@ -42,55 +52,31 @@ pub fn format_artwork_url(path: Option<&impl AsRef<Path>>) -> Option<String> {
             abs_str
         };
 
-        #[cfg(target_os = "windows")]
-        {
-            // Since Windows WebView2 is such a bitch with custom protocols, I decided to instead use base64 data URLs
-            // TODO: Reduce overhead.
-            use std::fs;
+        const QUERY_VAL: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
+            .add(b' ')
+            .add(b'"')
+            .add(b'#')
+            .add(b'%')
+            .add(b'&')
+            .add(b'+')
+            .add(b'=')
+            .add(b'?')
+            .add(b'<')
+            .add(b'>')
+            .add(b'`')
+            .add(b'\\')
+            .add(b':');
 
-            if let Ok(bytes) = fs::read(&*abs_str) {
-                // Determine MIME type, TODO: expand list
-                let mime = if abs_str.ends_with(".png") {
-                    "image/png"
-                } else if abs_str.ends_with(".gif") {
-                    "image/gif"
-                } else if abs_str.ends_with(".webp") {
-                    "image/webp"
-                } else {
-                    "image/jpeg"
-                };
-
-                // Encode to base64
-                use base64::{Engine as _, engine::general_purpose};
-                let b64 = general_purpose::STANDARD.encode(&bytes);
-                Some(format!("data:{};base64,{}", mime, b64))
-            } else {
-                None
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            // catch all
-            const QUERY_VAL: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
-                .add(b' ')
-                .add(b'"')
-                .add(b'#')
-                .add(b'%')
-                .add(b'&')
-                .add(b'+')
-                .add(b'=')
-                .add(b'?')
-                .add(b'<')
-                .add(b'>')
-                .add(b'`')
-                .add(b'\\')
-                .add(b':');
-
-            Some(format!(
+        if cfg!(target_os = "windows") {
+            Some(cover_url_from_string(format!(
+                "http://artwork.dioxus.localhost/local?p={}",
+                percent_encoding::utf8_percent_encode(&abs_str, QUERY_VAL)
+            )))
+        } else {
+            Some(cover_url_from_string(format!(
                 "artwork://local?p={}",
                 percent_encoding::utf8_percent_encode(&abs_str, QUERY_VAL)
-            ))
+            )))
         }
     })
 }

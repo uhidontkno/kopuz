@@ -11,8 +11,6 @@ use components::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use dioxus::desktop::tao::dpi::LogicalSize;
-#[cfg(not(target_arch = "wasm32"))]
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
 use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 use dioxus::prelude::*;
@@ -26,6 +24,8 @@ use reader::FavoritesStore;
 use std::path::PathBuf;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod queue_state;
 mod web_storage;
@@ -127,7 +127,9 @@ fn sanitize_queue_state(state: PersistedQueueState) -> Option<PersistedQueueStat
         return None;
     }
 
-    let original_index = state.current_queue_index.min(state.queue.len().saturating_sub(1));
+    let original_index = state
+        .current_queue_index
+        .min(state.queue.len().saturating_sub(1));
     let mut selected_track_survived = false;
     let survivors: Vec<(usize, reader::Track)> = state
         .queue
@@ -162,7 +164,8 @@ fn sanitize_queue_state(state: PersistedQueueState) -> Option<PersistedQueueStat
 
     let queue: Vec<_> = survivors.into_iter().map(|(_, track)| track).collect();
     let progress_secs = if selected_track_survived {
-        queue.get(restored_index)
+        queue
+            .get(restored_index)
             .map(|track| state.progress_secs.min(track.duration))
             .unwrap_or(0)
     } else {
@@ -273,9 +276,7 @@ fn main() {
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         {
             let initial_titlebar_mode = read_titlebar_mode_from_disk();
-            window = window.with_decorations(
-                initial_titlebar_mode == config::TitlebarMode::System
-            );
+            window = window.with_decorations(initial_titlebar_mode == config::TitlebarMode::System);
         }
 
         let config = dioxus::desktop::Config::new()
@@ -431,7 +432,8 @@ fn App() -> Element {
 
     #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
     use_effect(move || {
-        let _ = dioxus::document::eval(r#"(function(){
+        let _ = dioxus::document::eval(
+            r#"(function(){
             try {
                 var ctx = new (window.AudioContext||window.webkitAudioContext)({sampleRate:8000});
                 var buf = ctx.createBuffer(1,1,8000);
@@ -444,7 +446,8 @@ fn App() -> Element {
                     if (ctx.state === 'suspended') ctx.resume();
                 });
             } catch(e) {}
-        })()"#);
+        })()"#,
+        );
     });
 
     use_effect(move || {
@@ -549,7 +552,10 @@ fn App() -> Element {
         persist_config_snapshot(config_snapshot, config_path());
     });
 
-    #[cfg(all(not(target_arch = "wasm32"), any(target_os = "linux", target_os = "windows")))]
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        any(target_os = "linux", target_os = "windows")
+    ))]
     use_effect(move || {
         let mode = config.read().titlebar_mode;
         let win = dioxus::desktop::use_window();
@@ -700,7 +706,7 @@ fn App() -> Element {
                 );
 
                 if let Ok(Ok(loaded)) = lib_res {
-                    library.set(loaded);
+                    library.set(loaded.clone());
                 }
                 if let Ok(loaded) = cfg_res {
                     config.set(loaded.clone());

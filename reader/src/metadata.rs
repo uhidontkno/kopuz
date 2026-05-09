@@ -3,6 +3,7 @@ use super::utils::{find_folder_cover, save_cover};
 use lofty::prelude::*;
 use lofty::tag::ItemKey;
 use lofty::{probe::Probe, properties::FileProperties, tag::Tag};
+use std::fs;
 use std::path::Path;
 
 pub fn make_album_id(album: &str) -> String {

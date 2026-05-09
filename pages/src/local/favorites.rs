@@ -25,19 +25,26 @@ pub fn LocalFavorites(
     let mut is_selection_mode = use_signal(|| false);
     let mut selected_tracks = use_signal(|| HashSet::<PathBuf>::new());
 
-    let displayed_tracks: Vec<(reader::models::Track, Option<String>)> = {
+    let displayed_tracks: Vec<(reader::models::Track, Option<utils::CoverUrl>)> = {
         let store = favorites_store.read();
         let lib = library.read();
+        let album_covers: std::collections::HashMap<_, _> = lib
+            .albums
+            .iter()
+            .map(|a| {
+                (
+                    a.id.clone(),
+                    a.cover_path
+                        .as_ref()
+                        .and_then(|cp| utils::format_artwork_url(Some(cp))),
+                )
+            })
+            .collect::<std::collections::HashMap<String, Option<utils::CoverUrl>>>();
         lib.tracks
             .iter()
             .filter(|t| store.is_local_favorite(&t.path))
             .map(|t| {
-                let cover_url = lib
-                    .albums
-                    .iter()
-                    .find(|a| a.id == t.album_id)
-                    .and_then(|a| a.cover_path.as_ref())
-                    .and_then(|cp| utils::format_artwork_url(Some(cp)));
+                let cover_url = album_covers.get(&t.album_id).cloned().flatten();
                 (t.clone(), cover_url)
             })
             .collect()

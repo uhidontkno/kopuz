@@ -66,7 +66,7 @@ pub fn LocalPlaylists(
 
     let lib = library.read();
 
-    let cover_for = |pid: &str| -> Option<String> {
+    let cover_for = |pid: &str| -> Option<utils::CoverUrl> {
         let store = playlist_store.read();
         let playlist = store.playlists.iter().find(|p| p.id == pid)?;
         let first_path = playlist.tracks.first()?;
@@ -122,7 +122,7 @@ pub fn LocalPlaylists(
                                         div {
                                             class: "mb-4 w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden transition-all bg-white/5",
                                             if let Some(url) = cover_url {
-                                                img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
+                                                img { src: "{url.as_ref()}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
                                             } else {
                                                 div {
                                                     class: "w-full h-full flex items-center justify-center",
@@ -207,7 +207,7 @@ pub fn LocalPlaylists(
                                             div {
                                                 class: "mb-4 w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden transition-all bg-white/5",
                                                 if let Some(url) = cover_url {
-                                                    img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
+                                                    img { src: "{url.as_ref()}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
                                                 } else {
                                                     div {
                                                         class: "w-full h-full flex items-center justify-center",

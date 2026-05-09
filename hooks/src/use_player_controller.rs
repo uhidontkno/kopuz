@@ -116,6 +116,7 @@ impl PlayerController {
                 .iter()
                 .find(|album| album.id == track.album_id)
                 .and_then(|album| utils::format_artwork_url(album.cover_path.as_ref()))
+                .map(|url| url.as_ref().to_string())
                 .unwrap_or_default(),
         }
     }

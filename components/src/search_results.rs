@@ -8,8 +8,8 @@ use reader::models::{Album, Track};
 #[component]
 pub fn SearchResults(
     search_query: String,
-    tracks: Vec<(Track, Option<String>)>,
-    albums: Vec<(Album, Option<String>)>,
+    tracks: Vec<(Track, Option<utils::CoverUrl>)>,
+    albums: Vec<(Album, Option<utils::CoverUrl>)>,
     library: Signal<Library>,
     playlist_store: Signal<reader::PlaylistStore>,
     player: Signal<player::Player>,
@@ -95,7 +95,7 @@ pub fn SearchResults(
                                     class: "aspect-square rounded-lg bg-black/40 mb-3 overflow-hidden relative",
                                     if let Some(url) = cover_url {
                                         img {
-                                            src: "{url}",
+                                            src: "{url.as_ref()}",
                                             class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300",
                                             decoding: "async", loading: "lazy",
                                         }

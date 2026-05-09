@@ -42,15 +42,17 @@ pub fn LocalLibrary(
     let mut selected_tracks = use_signal(|| HashSet::<PathBuf>::new());
 
     let displayed_tracks = use_memo(move || (items.all_tracks)());
+    let album_covers = use_memo(move || (items.album_covers)());
 
     let queue_tracks = use_memo(move || {
         displayed_tracks()
             .iter()
-            .map(|(t, _)| t.clone())
+            .map(|t| t.clone())
             .collect::<Vec<_>>()
     });
 
     let all_tracks = displayed_tracks();
+    let cover_urls = std::sync::Arc::new(album_covers());
     let is_empty = all_tracks.is_empty();
     let queue_source = std::sync::Arc::new(queue_tracks());
 
@@ -100,16 +102,18 @@ pub fn LocalLibrary(
         .enumerate()
         .skip(start_index)
         .take(items_to_render)
-        .map(|(idx, (track, cover_url))| {
+        .map(|(idx, track)| {
             let track_menu = track.clone();
             let track_add = track.clone();
             let track_delete = track.clone();
             let track_path = track.path.clone();
             let track_select = track.path.clone();
             let queue_arc = std::sync::Arc::clone(&queue_source);
+            let cover_urls = std::sync::Arc::clone(&cover_urls);
             let track_key = track.path.display().to_string();
             let is_menu_open = active_menu_track.read().as_ref() == Some(&track.path);
             let is_selected = selected_tracks.read().contains(&track_path);
+            let cover_url = cover_urls.get(&track.album_id).cloned().flatten();
 
             rsx! {
 div {

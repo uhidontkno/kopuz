@@ -5,7 +5,7 @@ use reader::models::Track;
 #[component]
 pub fn TrackRow(
     track: Track,
-    cover_url: Option<String>,
+    cover_url: Option<utils::CoverUrl>,
     on_click_menu: EventHandler<()>,
     is_menu_open: bool,
     on_add_to_playlist: EventHandler<()>,
@@ -109,7 +109,7 @@ pub fn TrackRow(
             div { class: "w-10 h-10 bg-white/5 rounded overflow-hidden flex items-center justify-center mr-4 shrink-0",
                 if let Some(url) = cover_url {
                     img {
-                        src: "{url}",
+                        src: "{url.as_ref()}",
                         class: "w-full h-full object-cover",
                         loading: "lazy",
                         decoding: "async",

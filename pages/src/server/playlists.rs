@@ -145,14 +145,14 @@ pub fn JellyfinPlaylists(
                                 if let Some(path) = &playlist.cover_path {
                                     utils::format_artwork_url(Some(path))
                                 } else if let Some(tag) = &playlist.image_tag {
-                                    Some(utils::jellyfin_image::jellyfin_image_url(
+                                    utils::map_cover_url(Some(utils::jellyfin_image::jellyfin_image_url(
                                         &server.url,
                                         &playlist.id,
                                         Some(tag.as_str()),
                                         server.access_token.as_deref(),
                                         384,
                                         80,
-                                    ))
+                                    )))
                                 } else if let Some(first_track_id) = playlist.tracks.first() {
                                     let lib = library.peek();
                                     lib.jellyfin_tracks
@@ -160,14 +160,14 @@ pub fn JellyfinPlaylists(
                                         .find(|t| t.path.to_string_lossy().contains(first_track_id.as_str()))
                                         .and_then(|t| {
                                             let path_str = t.path.to_string_lossy();
-                                            utils::jellyfin_image::track_cover_url_with_album_fallback(
+                                            utils::map_cover_url(utils::jellyfin_image::track_cover_url_with_album_fallback(
                                                 &path_str,
                                                 &t.album_id,
                                                 &server.url,
                                                 server.access_token.as_deref(),
                                                 384,
                                                 80,
-                                            )
+                                            ))
                                         })
                                 } else {
                                     None

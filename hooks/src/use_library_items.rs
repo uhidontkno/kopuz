@@ -5,7 +5,8 @@ use reader::models::Track;
 use std::collections::HashMap;
 
 pub struct LibraryItems {
-    pub all_tracks: Memo<Vec<(Track, Option<String>)>>,
+    pub all_tracks: Memo<Vec<Track>>,
+    pub album_covers: Memo<HashMap<String, Option<utils::CoverUrl>>>,
     pub artist_count: Memo<usize>,
     pub sort_order: Signal<SortOrder>,
 }
@@ -28,33 +29,29 @@ pub fn use_library_items(library: Signal<Library>) -> LibraryItems {
         artists.len()
     });
 
-    let all_tracks = use_memo(move || {
+    let album_covers = use_memo(move || {
         let lib = library.read();
 
-        let album_covers: HashMap<_, _> = lib
-            .albums
+        lib.albums
             .iter()
             .map(|a| {
                 (
-                    &a.id,
+                    a.id.clone(),
                     a.cover_path
                         .as_ref()
                         .and_then(|p| utils::format_artwork_url(Some(p))),
                 )
             })
-            .collect();
+            .collect::<HashMap<String, Option<utils::CoverUrl>>>()
+    });
 
-        let mut tracks: Vec<(Track, Option<String>)> = lib
-            .tracks
-            .iter()
-            .map(|track| {
-                let cover_url = album_covers.get(&track.album_id).cloned().flatten();
-                (track.clone(), cover_url)
-            })
-            .collect();
+    let all_tracks = use_memo(move || {
+        let lib = library.read();
+
+        let mut tracks: Vec<Track> = lib.tracks.iter().cloned().collect();
 
         match *sort_order.read() {
-            SortOrder::Title => tracks.sort_by_cached_key(|(a, _)| {
+            SortOrder::Title => tracks.sort_by_cached_key(|a| {
                 (
                     a.title.to_lowercase(),
                     a.artist.to_lowercase(),
@@ -63,7 +60,7 @@ pub fn use_library_items(library: Signal<Library>) -> LibraryItems {
                     a.track_number,
                 )
             }),
-            SortOrder::Artist => tracks.sort_by_cached_key(|(a, _)| {
+            SortOrder::Artist => tracks.sort_by_cached_key(|a| {
                 (
                     a.artist.to_lowercase(),
                     a.album.to_lowercase(),
@@ -72,7 +69,7 @@ pub fn use_library_items(library: Signal<Library>) -> LibraryItems {
                     a.title.to_lowercase(),
                 )
             }),
-            SortOrder::Album => tracks.sort_by_cached_key(|(a, _)| {
+            SortOrder::Album => tracks.sort_by_cached_key(|a| {
                 (
                     a.album.to_lowercase(),
                     a.disc_number,
@@ -87,6 +84,7 @@ pub fn use_library_items(library: Signal<Library>) -> LibraryItems {
 
     LibraryItems {
         all_tracks,
+        album_covers,
         artist_count,
         sort_order,
     }

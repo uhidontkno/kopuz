@@ -5,12 +5,12 @@ use reader::models::{Album, Track};
 
 // why these, its because code was looking complex and clippy said use type for them to make them look
 // good.
-type TrackRes = Vec<(Track, Option<String>)>;
-type AlbumRes = Vec<(Album, Option<String>)>;
+type TrackRes = Vec<(Track, Option<utils::CoverUrl>)>;
+type AlbumRes = Vec<(Album, Option<utils::CoverUrl>)>;
 
 #[derive(Clone, Copy)]
 pub struct SearchData {
-    pub genres: Memo<Vec<(String, Option<String>)>>,
+    pub genres: Memo<Vec<(String, Option<utils::CoverUrl>)>>,
     pub search_results: Memo<Option<(TrackRes, AlbumRes)>>,
     pub search_query: Signal<String>,
 }
@@ -61,11 +61,12 @@ pub fn use_search_data(
                         } else {
                             None
                         };
-                        genre_items.insert(g.to_string(), cover_url);
+                        genre_items.insert(g.to_string(), utils::map_cover_url(cover_url));
                     }
                 }
             }
-            let mut result: Vec<(String, Option<String>)> = genre_items.into_iter().collect();
+            let mut result: Vec<(String, Option<utils::CoverUrl>)> =
+                genre_items.into_iter().collect();
             result.sort_by(|a, b| a.0.cmp(&b.0));
             return result;
         }
@@ -87,7 +88,7 @@ pub fn use_search_data(
             }
         }
 
-        let mut result: Vec<(String, Option<String>)> = genre_covers
+        let mut result: Vec<(String, Option<utils::CoverUrl>)> = genre_covers
             .into_iter()
             .map(|(g, covers)| {
                 let cover_url = if !covers.is_empty() {
@@ -120,8 +121,8 @@ pub fn use_search_data(
         let album_map: std::collections::HashMap<&String, &Album> =
             lib.albums.iter().map(|a| (&a.id, a)).collect();
 
-        let tracks: Vec<(Track, Option<String>)>;
-        let albums: Vec<(Album, Option<String>)>;
+        let tracks: Vec<(Track, Option<utils::CoverUrl>)>;
+        let albums: Vec<(Album, Option<utils::CoverUrl>)>;
 
         match active_source {
             MusicSource::Local => {
@@ -177,7 +178,7 @@ pub fn use_search_data(
                     .map(|t| {
                         let cover_url = if let Some(server) = &server {
                             let path_str = t.path.to_string_lossy();
-                            match active_service {
+                            let url = match active_service {
                                 Some(MusicService::Jellyfin) => {
                                     utils::jellyfin_image::jellyfin_image_url_from_path(
                                         &path_str,
@@ -197,7 +198,8 @@ pub fn use_search_data(
                                     )
                                 }
                                 None => None,
-                            }
+                            };
+                            utils::map_cover_url(url)
                         } else {
                             None
                         };
@@ -220,7 +222,7 @@ pub fn use_search_data(
                         let cover_url = if let Some(server) = &server {
                             a.cover_path.as_ref().and_then(|cover_path| {
                                 let path_str = cover_path.to_string_lossy();
-                                match active_service {
+                                let url = match active_service {
                                     Some(MusicService::Jellyfin) => {
                                         utils::jellyfin_image::jellyfin_image_url_from_path(
                                             &path_str,
@@ -240,7 +242,8 @@ pub fn use_search_data(
                                         )
                                     }
                                     None => None,
-                                }
+                                };
+                                utils::map_cover_url(url)
                             })
                         } else {
                             None

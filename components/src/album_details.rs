@@ -148,7 +148,7 @@ pub fn AlbumDetails(
                                     if let Some(url) =
                                         utils::format_artwork_url(album.cover_path.as_ref())
                                     {
-                                        current_song_cover_url.set(url);
+                                        current_song_cover_url.set(url.as_ref().to_string());
                                     } else {
                                         current_song_cover_url.set(String::new());
                                     }

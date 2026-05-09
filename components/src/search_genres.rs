@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 #[component]
 pub fn SearchGenres(
-    genres: Vec<(String, Option<String>)>,
+    genres: Vec<(String, Option<utils::CoverUrl>)>,
     on_select_genre: EventHandler<String>,
 ) -> Element {
     rsx! {

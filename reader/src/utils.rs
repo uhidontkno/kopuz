@@ -16,6 +16,8 @@ pub fn find_folder_cover(dir: &Path) -> Option<PathBuf> {
 pub fn save_cover(album_id: &str, data: &[u8], cache_dir: &Path) -> std::io::Result<PathBuf> {
     fs::create_dir_all(cache_dir)?;
     let path = cache_dir.join(format!("{album_id}.jpg"));
-    fs::write(&path, data)?;
+    let bytes = data.to_vec();
+
+    fs::write(&path, bytes)?;
     Ok(path)
 }

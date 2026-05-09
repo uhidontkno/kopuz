@@ -133,7 +133,7 @@ pub fn Fullscreen(
         }
     });
 
-    let get_track_cover = |track: &reader::Track| -> Option<String> {
+    let get_track_cover = |track: &reader::Track| -> Option<utils::CoverUrl> {
         let lib = library.read();
         let conf = config.read();
 
@@ -150,7 +150,7 @@ pub fn Fullscreen(
 
         if let Some(provider) = provider {
             if let Some(server) = &conf.server {
-                return match provider {
+                let url = match provider {
                     config::MusicService::Jellyfin => {
                         utils::jellyfin_image::jellyfin_image_url_from_path(
                             &path_str,
@@ -170,6 +170,7 @@ pub fn Fullscreen(
                         )
                     }
                 };
+                return utils::map_cover_url(url);
             }
             None
         } else {
@@ -490,7 +491,7 @@ pub fn Fullscreen(
                                             class: "rounded-md overflow-hidden bg-black/30 flex-shrink-0 shadow-sm",
                                             style: "width: 48px; height: 48px;",
                                             if let Some(ref url) = cover_url {
-                                                img { src: "{url}", class: "w-full h-full object-cover" }
+                                                img { src: "{url.as_ref()}", class: "w-full h-full object-cover" }
                                             } else {
                                                 div {
                                                     class: "w-full h-full flex items-center justify-center",
@@ -531,7 +532,7 @@ pub fn Fullscreen(
                                             class: "rounded-md overflow-hidden bg-black/30 flex-shrink-0 shadow-sm",
                                             style: "width: 48px; height: 48px;",
                                             if let Some(ref url) = cover_url {
-                                                img { src: "{url}", class: "w-full h-full object-cover" }
+                                                img { src: "{url.as_ref()}", class: "w-full h-full object-cover" }
                                             } else {
                                                 div {
                                                     class: "w-full h-full flex items-center justify-center",

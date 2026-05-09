@@ -8,8 +8,8 @@ use reader::models::Track;
 #[component]
 pub fn SearchGenreDetail(
     genre: String,
-    genre_tracks: Vec<(Track, Option<String>)>,
-    genres: Vec<(String, Option<String>)>,
+    genre_tracks: Vec<(Track, Option<utils::CoverUrl>)>,
+    genres: Vec<(String, Option<utils::CoverUrl>)>,
     on_back: EventHandler<()>,
     library: Signal<Library>,
     playlist_store: Signal<reader::PlaylistStore>,
@@ -40,7 +40,7 @@ pub fn SearchGenreDetail(
 
             div { class: "flex items-end gap-6 mb-8",
                  if let Some((_, Some(url))) = genres.iter().find(|(g, _)| g == &genre) {
-                     img { src: "{url}", class: "w-48 h-48 rounded-lg object-cover" }
+                     img { src: "{url.as_ref()}", class: "w-48 h-48 rounded-lg object-cover" }
                  } else {
                      div { class: "w-48 h-48 rounded-lg bg-gradient-to-br flex items-center justify-center",
                          i { class: "fa-solid fa-music text-6xl text-white/20" }

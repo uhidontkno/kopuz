@@ -107,14 +107,14 @@ pub fn JellyfinLibrary(
             .map(|t| {
                 let cover_url = if let Some(server) = &conf.server {
                     let path_str = t.path.to_string_lossy();
-                    utils::jellyfin_image::track_cover_url_with_album_fallback(
+                    utils::map_cover_url(utils::jellyfin_image::track_cover_url_with_album_fallback(
                         &path_str,
                         &t.album_id,
                         &server.url,
                         server.access_token.as_deref(),
                         80,
                         80,
-                    )
+                    ))
                 } else {
                     None
                 };

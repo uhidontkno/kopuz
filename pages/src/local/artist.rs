@@ -178,7 +178,7 @@ pub fn LocalArtist(
                                     onclick: move |_| artist_name.set(art.clone()),
                                     div { class: "aspect-square w-full rounded-full bg-stone-800 mb-4 overflow-hidden relative transition-all",
                                         if let Some(url) = cover_url {
-                                            img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" }
+                                            img { src: "{url.as_ref()}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" }
                                         } else {
                                             div { class: "w-full h-full flex items-center justify-center text-white/20",
                                                 i { class: "fa-solid fa-microphone text-5xl" }
@@ -314,7 +314,7 @@ pub fn LocalArtist(
                                                             div { class: "aspect-square rounded-lg bg-stone-800 mb-3 overflow-hidden relative",
                                                                 if let Some(url) = &cover_url {
                                                                     img {
-                                                                        src: "{url}",
+                                                                        src: "{url.as_ref()}",
                                                                         class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300",
                                                                     }
                                                                 } else {

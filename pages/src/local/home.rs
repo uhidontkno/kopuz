@@ -103,7 +103,7 @@ pub fn LocalHome(
                         rsx! {
                             div { class: "absolute inset-0",
                                 if let Some(url) = utils::format_artwork_url(album.cover_path.as_ref()) {
-                                    img { src: "{url}", class: "w-full h-full object-cover" }
+                                    img { src: "{url.as_ref()}", class: "w-full h-full object-cover" }
                                 }
                                 div { class: "absolute inset-0 bg-gradient-to-r from-black/90 via-black/40 to-transparent" }
                             }
@@ -200,7 +200,7 @@ pub fn LocalHome(
                                         },
                                         div { class: "w-16 h-16 md:w-20 md:h-20 flex-shrink-0 bg-stone-800/50 relative overflow-hidden",
                                             if let Some(url) = utils::format_artwork_url(album.cover_path.as_ref()) {
-                                                img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
+                                                img { src: "{url.as_ref()}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
                                             } else {
                                                 div { class: "w-full h-full flex items-center justify-center",
                                                     i { class: "fa-solid fa-compact-disc text-xl text-white/20" }
@@ -265,7 +265,7 @@ pub fn LocalHome(
                                 div { class: "aspect-square rounded-full bg-stone-800/80 mb-4 overflow-hidden transition-all duration-300 relative mx-auto",
                                     if let Some(path) = cover_path {
                                         if let Some(url) = utils::format_artwork_url(Some(&path)) {
-                                            img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" }
+                                            img { src: "{url.as_ref()}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" }
                                         }
                                     } else {
                                         div { class: "w-full h-full flex items-center justify-center border border-white/5 rounded-full",
@@ -310,7 +310,7 @@ pub fn LocalHome(
                                 },
                                 div { class: "aspect-square rounded-2xl bg-stone-800/80 mb-4 overflow-hidden transition-all duration-300 relative",
                                     if let Some(url) = utils::format_artwork_url(album.cover_path.as_ref()) {
-                                        img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
+                                        img { src: "{url.as_ref()}", class: "w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" }
                                     } else {
                                         div { class: "w-full h-full flex items-center justify-center border border-white/5 rounded-2xl",
                                             i { class: "fa-solid fa-compact-disc text-3xl text-white/20" }
@@ -390,7 +390,7 @@ pub fn LocalHome(
                                         },
                                         div { class: "aspect-square rounded-2xl bg-white/5 mb-4 overflow-hidden transition-all duration-500 relative",
                                             if let Some(url) = cover_url {
-                                                img { src: "{url}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" }
+                                                img { src: "{url.as_ref()}", class: "w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" }
                                             } else {
                                                 div { class: "w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-600/20 to-purple-600/20 group-hover:scale-110 transition-transform duration-700",
                                                     i { class: "fa-solid fa-music text-5xl opacity-40 text-white" }

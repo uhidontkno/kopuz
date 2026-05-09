@@ -222,14 +222,14 @@ pub fn PlaylistDetail(
         if let Some(path) = &playlist_custom_cover {
             utils::format_artwork_url(Some(path))
         } else if let Some(tag) = &playlist_image_tag {
-            Some(utils::jellyfin_image::jellyfin_image_url(
+            Some(std::sync::Arc::from(utils::jellyfin_image::jellyfin_image_url(
                 &server.url,
                 &playlist_id,
                 Some(tag.as_str()),
                 server.access_token.as_deref(),
                 512,
                 90,
-            ))
+            ).as_str()))
         } else {
             tracks_val.first().and_then(|t| {
                 let path_str = t.path.to_string_lossy();
@@ -240,6 +240,7 @@ pub fn PlaylistDetail(
                     512,
                     90,
                 )
+                .map(|s| std::sync::Arc::from(s.as_str()))
             })
         }
     } else {

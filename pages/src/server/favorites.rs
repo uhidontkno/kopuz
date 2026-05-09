@@ -84,7 +84,7 @@ pub fn JellyfinFavorites(
         }
     });
 
-    let displayed_tracks: Vec<(reader::models::Track, Option<String>)> = {
+    let displayed_tracks: Vec<(reader::models::Track, Option<utils::CoverUrl>)> = {
         let store = favorites_store.read();
         let lib = library.read();
         let server = config.read();
@@ -104,14 +104,14 @@ pub fn JellyfinFavorites(
             .map(|t| {
                 let cover_url = if let Some(ref srv) = server_ref {
                     let path_str = t.path.to_string_lossy();
-                    utils::jellyfin_image::track_cover_url_with_album_fallback(
+                    utils::map_cover_url(utils::jellyfin_image::track_cover_url_with_album_fallback(
                         &path_str,
                         &t.album_id,
                         &srv.url,
                         srv.access_token.as_deref(),
                         80,
                         80,
-                    )
+                    ))
                 } else {
                     None
                 };

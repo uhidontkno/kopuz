@@ -10,7 +10,7 @@ use std::path::PathBuf;
 pub struct ShowcaseProps {
     pub name: String,
     pub description: String,
-    pub cover_url: Option<String>,
+    pub cover_url: Option<utils::CoverUrl>,
     pub tracks: Vec<Track>,
     pub library: Signal<Library>,
     pub on_play: EventHandler<usize>,
@@ -52,7 +52,7 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                  class: "flex flex-col md:flex-row items-end gap-8 mb-12",
                  div { class: "w-64 h-64 rounded-xl bg-stone-800 overflow-hidden relative flex-shrink-0",
                      if let Some(url) = &props.cover_url {
-                         img { src: "{url}", class: "w-full h-full object-cover" }
+                         img { src: "{url.as_ref()}", class: "w-full h-full object-cover" }
                      } else {
                          div { class: "w-full h-full flex flex-col items-center justify-center text-white/20",
                              i { class: "fa-solid fa-music text-6xl mb-4" }
@@ -120,7 +120,7 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                              let cover_url = if is_server_source {
                                  if let Some(server) = &config.read().server {
                                      let path_str = track.path.to_string_lossy();
-                                     match server.service {
+                                     let url = match server.service {
                                          MusicService::Jellyfin => {
                                              utils::jellyfin_image::track_cover_url_with_album_fallback(
                                                  &path_str,
@@ -140,7 +140,8 @@ pub fn Showcase(props: ShowcaseProps) -> Element {
                                                  80,
                                              )
                                          }
-                                     }
+                                     };
+                                     utils::map_cover_url(url)
                                  } else { None }
                              } else {
                                  lib.albums.iter()

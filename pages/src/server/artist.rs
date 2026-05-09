@@ -78,14 +78,14 @@ pub fn JellyfinArtist(
             return None;
         }
         if let Some(url) = lib.server_artist_images.get(artist.as_str()) {
-            return Some(url.clone());
+            return Some(utils::cover_url_from_string(url.clone()));
         }
         lib.jellyfin_albums
             .iter()
             .find(|a| a.artist.to_lowercase() == artist.to_lowercase())
             .and_then(|album| {
                 if let Some(server) = &conf.server {
-                    album.cover_path.as_ref().and_then(|cover_path| {
+                    utils::map_cover_url(album.cover_path.as_ref().and_then(|cover_path| {
                         let path_str = cover_path.to_string_lossy();
                         utils::jellyfin_image::jellyfin_image_url_from_path(
                             &path_str,
@@ -94,7 +94,7 @@ pub fn JellyfinArtist(
                             512,
                             90,
                         )
-                    })
+                    }))
                 } else {
                     None
                 }
@@ -145,13 +145,13 @@ pub fn JellyfinArtist(
                             let cover_url = if let Some(server) = &config.read().server {
                                 if let Some(path) = cover_path {
                                     let path_str = path.to_string_lossy();
-                                    utils::jellyfin_image::jellyfin_image_url_from_path(
+                                    utils::map_cover_url(utils::jellyfin_image::jellyfin_image_url_from_path(
                                         &path_str,
                                         &server.url,
                                         server.access_token.as_deref(),
                                         320,
                                         80,
-                                    )
+                                    ))
                                 } else {
                                     None
                                 }
@@ -460,19 +460,19 @@ pub fn JellyfinArtist(
                                                 let id_for_navigate = album.id.clone();
                                                 let is_open = open_album_menu.read().as_deref() == Some(&album.id);
                                                 let cover_url = if let Some(server) = &config.read().server {
-                                                    album.cover_path.as_ref().and_then(|p| {
-                                                        let path_str = p.to_string_lossy();
-                                                        utils::jellyfin_image::jellyfin_image_url_from_path(
-                                                            &path_str,
-                                                            &server.url,
-                                                            server.access_token.as_deref(),
-                                                            320,
-                                                            80,
-                                                        )
-                                                    })
-                                                } else {
-                                                    None
-                                                };
+                                    utils::map_cover_url(album.cover_path.as_ref().and_then(|p| {
+                                        let path_str = p.to_string_lossy();
+                                        utils::jellyfin_image::jellyfin_image_url_from_path(
+                                            &path_str,
+                                            &server.url,
+                                            server.access_token.as_deref(),
+                                            320,
+                                            80,
+                                        )
+                                    }))
+                                } else {
+                                    None
+                                };
                                                 rsx! {
                                                     div {
                                                         key: "{album.id}",

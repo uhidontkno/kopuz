@@ -1275,7 +1275,23 @@ impl PlayerController {
         }
     }
 
-    pub fn move_queue_item(&mut self, from: usize, to: usize) {
+    pub fn move_queue_item(&mut self, from_list_pos: usize, to_list_pos: usize) {
+        if *self.shuffle.peek() {
+            self.shuffle_order.with_mut(|so| {
+                if from_list_pos < so.len() && to_list_pos < so.len() {
+                    let item = so.remove(from_list_pos);
+                    so.insert(to_list_pos, item);
+                }
+            });
+        } else {
+            let current_idx = *self.current_queue_index.peek();
+            let from_queue_idx = current_idx + 1 + from_list_pos;
+            let to_queue_idx = current_idx + 1 + to_list_pos;
+            self.move_physical_queue_item(from_queue_idx, to_queue_idx);
+        }
+    }
+
+    fn move_physical_queue_item(&mut self, from: usize, to: usize) {
         let len = self.queue.peek().len();
         if from >= len || to >= len || from == to {
             return;
@@ -1292,6 +1308,12 @@ impl PlayerController {
 
         self.history.with_mut(|history| {
             for idx in history.iter_mut() {
+                *idx = Self::remap_queue_index(*idx, from, to);
+            }
+        });
+        
+        self.shuffle_order.with_mut(|shuffle_order| {
+            for idx in shuffle_order.iter_mut() {
                 *idx = Self::remap_queue_index(*idx, from, to);
             }
         });

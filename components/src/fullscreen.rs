@@ -572,7 +572,8 @@ pub fn Fullscreen(
                             {
                                 let track = queue.read()[i].clone();
                                 let cover_url = get_track_cover(&track);
-                                let can_move_up = i > *current_queue_index.read() + 1;
+                                let list_pos = i - (*current_queue_index.read() + 1);
+                                let can_move_up = list_pos > 0;
                                 let can_move_down = i + 1 < queue.read().len();
                                 rsx! {
                                     div {
@@ -601,8 +602,8 @@ pub fn Fullscreen(
                                             can_move_down,
                                             class: "flex flex-col pr-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity".to_string(),
                                             icon_class: "text-[10px]".to_string(),
-                                            on_move_up: move |_| move_queue_item(i, i - 1),
-                                            on_move_down: move |_| move_queue_item(i, i + 1),
+                                            on_move_up: move |_| move_queue_item(list_pos, list_pos - 1),
+                                            on_move_down: move |_| move_queue_item(list_pos, list_pos + 1),
                                         }
                                     }
                                 }

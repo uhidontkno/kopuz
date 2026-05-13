@@ -382,9 +382,9 @@ pub fn Rightbar(
                             let queue_idx = *queue_idx;
                             let track = track.clone();
                             let cover_url = get_track_cover(&track);
-                            let current_idx = *current_queue_index.read();
-                            let can_move_up = !is_shuffle && queue_idx > current_idx + 1;
-                            let can_move_down = !is_shuffle && queue_idx + 1 < queue.read().len();
+                            let _current_idx = *current_queue_index.read();
+                            let can_move_up = list_pos > 0;
+                            let can_move_down = list_pos + 1 < up_next_items.len();
                             rsx! {
                                 div {
                                     key: "{list_pos}",
@@ -408,14 +408,12 @@ pub fn Rightbar(
                                         div { class: "text-sm text-white truncate font-medium", "{track.title}" }
                                         div { class: "text-xs text-white/50 truncate group-hover:text-white/70", "{track.artist}" }
                                     }
-                                    if !is_shuffle {
-                                        ReorderButtons {
-                                            can_move_up,
-                                            can_move_down,
-                                            class: "flex flex-col pr-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity".to_string(),
-                                            on_move_up: move |_| move_queue_item(queue_idx, queue_idx - 1),
-                                            on_move_down: move |_| move_queue_item(queue_idx, queue_idx + 1),
-                                        }
+                                    ReorderButtons {
+                                        can_move_up,
+                                        can_move_down,
+                                        class: "flex flex-col pr-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity".to_string(),
+                                        on_move_up: move |_| ctrl.move_queue_item(list_pos, list_pos - 1),
+                                        on_move_down: move |_| ctrl.move_queue_item(list_pos, list_pos + 1),
                                     }
                                 }
                             }

@@ -181,8 +181,8 @@ heart_track_to_add_server = Heart a track while it's playing to add it here and 
 search_placeholder = Search for artists, albums or tracks...
 no_results_found = No results found for "{ $query }"
 listenbrainz_token_placeholder = Enter your ListenBrainz token
-lastfm_api_key_placeholder = Enter your Last.fm API Key <!-- NEEDS LOCALIZATION -->
-lastfm_api_secret_placeholder = Enter your Last.fm API Secret <!-- NEEDS LOCALIZATION -->
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
 
 # Empty States
 album_not_found = Album not found

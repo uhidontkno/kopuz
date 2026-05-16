@@ -333,6 +333,7 @@ impl PlayerController {
     fn play_track_no_history_with_transition(&mut self, idx: usize, allow_crossfade: bool) {
         self.play_generation.with_mut(|g| *g += 1);
         let current_gen = *self.play_generation.peek();
+        self.cancel_radio_task();
 
         if let Some(track) = self.current_track(idx) {
             let path_str = track.path.to_string_lossy().to_string();
@@ -1583,7 +1584,11 @@ impl PlayerController {
     pub fn set_loop_mode(&mut self, mode: LoopMode) {
         self.loop_mode.set(mode);
     }
-
+    fn cancel_radio_task(&mut self) {
+            if let Some(task) = self.radio_task.take() {
+            task.cancel();
+        }
+    }
     pub fn play_radio(&mut self, station_id: &str, stream_id: &str) {
         let path = format!("radio:{}:{}", station_id, stream_id);
         let track = Track {
@@ -1607,6 +1612,7 @@ impl PlayerController {
         q.push(track);
         drop(q);
 
+        self.shuffle_order.set(vec![0]);
         self.current_queue_index.set(0);
         self.history.write().clear();
         self.play_track_no_history_with_transition(0, false);

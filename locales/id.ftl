@@ -27,6 +27,10 @@ add = Tambah
 add_folder = Tambah Folder
 no_music_folders = Tidak ada folder musik yang diset
 add_server = Tambah Server
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = Detail Server
 server_name = Nama Server
 server_url = URL Server
@@ -82,6 +86,7 @@ ytdlp_write_xattrs = Tulis xattrs
 ytdlp_no_mtime = Jangan set mtime
 ytdlp_unlimited = tak terbatas
 ytdlp_none = Nonaktif
+ytdlp_js_runtimes_tooltip = Jika YouTube gagal karena error JS atau tantangan captcha, atur runtime JS di sini, misalnya deno atau node.
 ytdlp_format_best_audio = Audio Terbaik
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC
@@ -173,6 +178,10 @@ heart_track_to_add_server = Sukai lagu yang sedang diputar untuk menambahkannya 
 search_placeholder = Cari artis, album atau lagu...
 no_results_found = Tidak ada hasil untuk "{ $query }"
 listenbrainz_token_placeholder = Masukkan token ListenBrainz kamu
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = Album tidak ditemukan
@@ -232,6 +241,7 @@ repeat_track = Ulang: Lagu
 rescan_library = Scan ulang koleksi
 refresh_music_library = Perbarui Koleksi Musik
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Gradien Album art
 default_theme = Bawaan
 gruvbox_material = Gruvbox Material

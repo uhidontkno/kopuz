@@ -27,6 +27,10 @@ add = Ekle
 add_folder = Klasör Ekle
 no_music_folders = Müzik klasörü yapılandırılmadı
 add_server = Sunucu Ekle
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = Sunucu Detayları
 server_name = Sunucu Adı
 server_url = Sunucu URL'si
@@ -119,6 +123,10 @@ heart_track_to_add_server = Eklemek ve sunucunuza senkronize etmek için çalark
 search_placeholder = Sanatçı, albüm veya parça ara...
 no_results_found = "{ $query }" için sonuç bulunamadı
 listenbrainz_token_placeholder = ListenBrainz token'ınızı girin
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = Albüm bulunamadı
@@ -181,6 +189,7 @@ repeat_track = Tekrar: Parça
 rescan_library = Kütüphaneyi Tara
 refresh_music_library = Müzik Kütüphaneni Yenile
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Albüm kapağı gradyanı
 default_theme = Varsayılan
 gruvbox_material = Gruvbox Material
@@ -286,6 +295,7 @@ ytdlp_write_xattrs = xattrs yaz
 ytdlp_no_mtime = Dosya mtime (değiştirilme zamanı) ayarlama
 ytdlp_unlimited = sınırsız
 ytdlp_none = Yok
+ytdlp_js_runtimes_tooltip = YouTube JS veya captcha doğrulama hatalarıyla başarısız olursa, buraya deno ya da node gibi bir JS çalışma zamanı girin.
 ytdlp_format_best_audio = En İyi Ses
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC

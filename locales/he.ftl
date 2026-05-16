@@ -27,6 +27,10 @@ add = הוספה
 add_folder = הוספת תיקייה
 no_music_folders = לא הוגדרו תיקיות מוזיקה
 add_server = הוספת שרת
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = פרטי שרת
 server_name = שם השרת
 server_url = כתובת השרת
@@ -119,6 +123,10 @@ heart_track_to_add_server = סמנו שיר בלב בזמן שהוא מתנגן 
 search_placeholder = חיפוש אמנים, אלבומים או שירים...
 no_results_found = לא נמצאו תוצאות עבור "{ $query }"
 listenbrainz_token_placeholder = הזנת טוקן ListenBrainz
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = האלבום לא נמצא
@@ -181,6 +189,7 @@ repeat_track = חזרה: שיר
 rescan_library = סרוק ספרייה מחדש
 refresh_music_library = רענון ספריית מוזיקה
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = מעבר צבעים בעטיפת האלבום
 default_theme = ברירת מחדל
 gruvbox_material = Gruvbox Material
@@ -286,6 +295,7 @@ ytdlp_write_xattrs = כתוב xattrs
 ytdlp_no_mtime = אל תגדיר mtime לקובץ
 ytdlp_unlimited = ללא הגבלה
 ytdlp_none = ללא
+ytdlp_js_runtimes_tooltip = אם YouTube נכשל עם שגיאות JS או אתגרי captcha, הגדר כאן סביבת ריצה של JS, למשל deno או node.
 ytdlp_format_best_audio = אודיו מיטבי
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC

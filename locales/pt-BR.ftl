@@ -27,6 +27,10 @@ add = Adicionar
 add_folder = Adicionar pasta
 no_music_folders = Nenhuma pasta de músicas configurada
 add_server = Adicionar servidor
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = Detalhes do servidor
 server_name = Nome do servidor
 server_url = URL do servidor
@@ -82,6 +86,7 @@ ytdlp_write_xattrs = Gravar atributos estendidos
 ytdlp_no_mtime = Não definir mtime do arquivo
 ytdlp_unlimited = ilimitado
 ytdlp_none = Nenhum
+ytdlp_js_runtimes_tooltip = Se o YouTube falhar com erros de JS ou desafios de captcha, defina aqui um runtime de JS, por exemplo deno ou node.
 ytdlp_format_best_audio = Melhor áudio
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC
@@ -173,6 +178,10 @@ heart_track_to_add_server = Curta uma faixa enquanto ela estiver tocando para ad
 search_placeholder = Buscar artistas, álbuns ou faixas...
 no_results_found = Nenhum resultado encontrado para "{ $query }"
 listenbrainz_token_placeholder = Insira seu token do ListenBrainz
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = Álbum não encontrado
@@ -232,6 +241,7 @@ repeat_track = Repetir: faixa
 rescan_library = Reescanear biblioteca
 refresh_music_library = Atualizar biblioteca de músicas
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Gradiente da capa do álbum
 default_theme = Padrão
 gruvbox_material = Gruvbox Material

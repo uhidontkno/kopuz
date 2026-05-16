@@ -27,6 +27,10 @@ add = Adaugă
 add_folder = Adaugă Folder
 no_music_folders = Nu sunt configurate foldere muzicale
 add_server = Adaugă Server
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = Detalii Server
 server_name = Nume Server
 server_url = URL Server
@@ -119,6 +123,10 @@ heart_track_to_add_server = Adaugă o piesă la favorite în timp ce este redat�
 search_placeholder = Caută artiști, albume sau piese...
 no_results_found = Niciun rezultat pentru "{ $query }"
 listenbrainz_token_placeholder = Introdu token-ul ListenBrainz
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = Albumul nu a fost găsit
@@ -181,6 +189,7 @@ repeat_track = Repetare: Piesă
 rescan_library = Rescanare Bibliotecă
 refresh_music_library = Actualizează Biblioteca
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Gradient copertă album
 default_theme = Implicit
 gruvbox_material = Gruvbox Material
@@ -286,6 +295,7 @@ ytdlp_write_xattrs = Scrie xattrs
 ytdlp_no_mtime = Nu seta mtime din fișier
 ytdlp_unlimited = nelimitat
 ytdlp_none = Niciunul
+ytdlp_js_runtimes_tooltip = Dacă YouTube eșuează cu erori JS sau provocări captcha, setează aici un runtime JS, de exemplu deno sau node.
 ytdlp_format_best_audio = Cel mai bun Audio
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC

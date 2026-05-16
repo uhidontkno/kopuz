@@ -27,6 +27,10 @@ add = 󱥄󱥌
 add_folder = 󱥄󱥌 󱤉 󱤕
 no_music_folders = 󱤕 󱤧 󱤬 󱤂
 add_server = 󱥄󱥸︀󱤉󱥌
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = 󱥡󱥌
 server_name = 󱥂󱥌
 server_url = 󱤿URL 󱥌
@@ -118,6 +122,10 @@ heart_track_to_add_server = 󱥄󱤭󱤉󱥀󱥅󱤬󱤠󱤕󱤡󱤕󱤧󱤖󱥩
 search_placeholder = 󱥄󱤃󱤉󱤑󱥉, 󱤉󱤟󱥍󱤕󱥖, 󱤉󱤕󱦜󱦜󱦜
 no_results_found = "{ $query }"󱤧󱤬󱤂
 listenbrainz_token_placeholder = 󱥄󱥌󱤉"token ListenBrainz"
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = 󱤟󱥍󱦗󱤕󱥖󱦘󱤧󱤬󱤂
@@ -175,6 +183,7 @@ repeat_track = 󱥄󱥝󱦝󱥳
 rescan_library = 󱥄󱤮󱥝󱤉󱥓󱤕
 refresh_music_library = 󱥄󱤮󱥝󱤉󱥓󱤕
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Album art gradient
 default_theme = Default
 gruvbox_material = Gruvbox Material
@@ -261,6 +270,7 @@ ytdlp_write_xattrs = 󱥎 󱥫 󱤉 xattrs
 ytdlp_no_mtime = 󱥎 󱥔 󱤂 󱤉 mtime
 ytdlp_unlimited = 󱥯 󱤄
 ytdlp_none = 󱤂
+ytdlp_js_runtimes_tooltip = sina lon e pakala JS anu pakala captcha lon YouTube la, o pana e ilo JS lon ni, sama deno anu node.
 ytdlp_format_best_audio = 󱤖 󱥟 󱥅
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC

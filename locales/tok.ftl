@@ -27,6 +27,10 @@ add = o namako
 add_folder = o namako e poki
 no_music_folders = poki kalama li ala
 add_server = o namako e pana
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = sona pana
 server_name = nimi pana
 server_url = nasin URL pana
@@ -119,6 +123,10 @@ heart_track_to_add_server = o luka e nena olin lon kute kalama la kalama li kama
 search_placeholder = o alasa e jan pali, e kulupu pi kalama sama, e kalama...
 no_results_found = "{ $query }" li lon ala
 listenbrainz_token_placeholder = o pana e "token ListenBrainz"
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = kulupu pi kalama sama li lon ala
@@ -181,6 +189,7 @@ repeat_track = o sin: wan
 rescan_library = o lukin sin e poki kalama
 refresh_music_library = o lukin sin e poki kalama
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Album art gradient
 default_theme = Default
 gruvbox_material = Gruvbox Material
@@ -286,6 +295,7 @@ ytdlp_write_xattrs = o sitelen e xattrs
 ytdlp_no_mtime = o pali ala e mtime
 ytdlp_unlimited = suli ale
 ytdlp_none = ala
+ytdlp_js_runtimes_tooltip = sina lon e pakala JS anu pakala captcha lon YouTube la, o pana e ilo JS lon ni, sama deno anu node.
 ytdlp_format_best_audio = kalama pona mute
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC

@@ -27,6 +27,10 @@ add = Hozzáadás
 add_folder = Mappa hozzáadása
 no_music_folders = Nincs zene mappa beállítva
 add_server = Szerver hozzáadása
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = Szerver részletei
 server_name = Szerver neve
 server_url = Szerver URL
@@ -119,6 +123,10 @@ heart_track_to_add_server = Kedveld a dalt lejátszás közben, hogy itt megjele
 search_placeholder = Keress előadókra, albumokra vagy dalokra...
 no_results_found = Nincs találat a következőre: "{ $query }"
 listenbrainz_token_placeholder = Add meg a ListenBrainz tokent
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = Album nem található
@@ -181,6 +189,7 @@ repeat_track = Ismétlés: Dal
 rescan_library = Könyvtár újraolvasása
 refresh_music_library = Zenetár frissítése
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Album borító gradiens
 default_theme = Alapértelmezett
 gruvbox_material = Gruvbox Material
@@ -286,6 +295,7 @@ ytdlp_write_xattrs = xattrs mentése
 ytdlp_no_mtime = Ne módosítsa a fájl idejét (mtime)
 ytdlp_unlimited = korlátlan
 ytdlp_none = Nincs
+ytdlp_js_runtimes_tooltip = Ha a YouTube JS- vagy captcha-hiba miatt nem működik, állíts be itt egy JS futtatókörnyezetet, például deno-t vagy node-ot.
 ytdlp_format_best_audio = Legjobb hang
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC

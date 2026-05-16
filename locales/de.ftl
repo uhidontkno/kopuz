@@ -27,6 +27,10 @@ add = Hinzufügen
 add_folder = Ordner hinzufügen
 no_music_folders = Keine Musikordner konfiguriert
 add_server = Server hinzufügen
+# TODO: NEED LOCALIZATION
+connect_to_lastfm = Connect to Last.fm
+lastfm_connected = Last.fm Connected
+# TODO: NEED LOCALIZATION
 server_details = Serverdetails
 server_name = Servername
 server_url = Serveradresse
@@ -119,6 +123,10 @@ heart_track_to_add_server = Markiere einen Titel mit „Gefällt mir“, um ihn 
 search_placeholder = Suche nach Künstlern, Alben oder Titeln...
 no_results_found = Keine Ergebnisse für „{ $query }“ gefunden
 listenbrainz_token_placeholder = Gib deinen ListenBrainz-Token ein
+# TODO: NEED LOCALIZATION
+lastfm_api_key_placeholder = Enter your Last.fm API Key
+lastfm_api_secret_placeholder = Enter your Last.fm API Secret
+# TODO: NEED LOCALIZATION
 
 # Empty States
 album_not_found = Album nicht gefunden
@@ -181,6 +189,7 @@ repeat_track = Wiederholen: Titel
 rescan_library = Bibliothek neu scannen
 refresh_music_library = Musikbibliothek aktualisieren
 listenbrainz = ListenBrainz
+lastfm = Last.fm
 album_art_gradient = Albumcover-Verlauf
 default_theme = Standard
 gruvbox_material = Gruvbox Material
@@ -286,6 +295,7 @@ ytdlp_write_xattrs = xattrs schreiben
 ytdlp_no_mtime = Datei-mtime nicht setzen
 ytdlp_unlimited = unbegrenzt
 ytdlp_none = Keine
+ytdlp_js_runtimes_tooltip = Wenn YouTube mit JS- oder Captcha-Fehlern fehlschlägt, lege hier eine JS-Laufzeit fest, z. B. deno oder node.
 ytdlp_format_best_audio = Bestes Audio
 ytdlp_format_mp3 = MP3
 ytdlp_format_flac = FLAC

@@ -49,6 +49,7 @@
               mold
               flatpak
               flatpak-builder
+              appstream
               rustToolchain
               dioxus-cli
               nodejs_22

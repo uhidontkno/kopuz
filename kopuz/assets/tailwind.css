@@ -343,6 +343,9 @@
   .left-8 {
     left: calc(var(--spacing) * 8);
   }
+  .z-3 {
+    z-index: 3;
+  }
   .z-10 {
     z-index: 10;
   }
@@ -369,6 +372,12 @@
     @media (width >= 96rem) {
       max-width: 96rem;
     }
+  }
+  .m-6 {
+    margin: calc(var(--spacing) * 6);
+  }
+  .m-9 {
+    margin: calc(var(--spacing) * 9);
   }
   .-mx-2 {
     margin-inline: calc(var(--spacing) * -2);
@@ -478,6 +487,9 @@
   .block {
     display: block;
   }
+  .contents {
+    display: contents;
+  }
   .flex {
     display: flex;
   }
@@ -489,6 +501,9 @@
   }
   .inline-flex {
     display: inline-flex;
+  }
+  .table {
+    display: table;
   }
   .aspect-square {
     aspect-ratio: 1 / 1;
@@ -567,6 +582,9 @@
   }
   .h-\[3px\] {
     height: 3px;
+  }
+  .h-\[350px\] {
+    height: 350px;
   }
   .h-full {
     height: 100%;
@@ -672,6 +690,9 @@
   }
   .w-\[1px\] {
     width: 1px;
+  }
+  .w-\[4\.5rem\] {
+    width: 4.5rem;
   }
   .w-auto {
     width: auto;
@@ -1379,6 +1400,9 @@
   .p-8 {
     padding: calc(var(--spacing) * 8);
   }
+  .p-9 {
+    padding: calc(var(--spacing) * 9);
+  }
   .px-1 {
     padding-inline: calc(var(--spacing) * 1);
   }
@@ -1656,6 +1680,9 @@
   }
   .text-indigo-400 {
     color: var(--color-indigo-400);
+  }
+  .text-indigo-500 {
+    color: var(--color-indigo-500);
   }
   .text-orange-500\/80 {
     color: color-mix(in srgb, oklch(70.5% 0.213 47.604) 80%, transparent);

@@ -73,7 +73,7 @@ impl CoverFetcher {
             let artist = library.albums[idx].artist.clone();
             let title = library.albums[idx].title.clone();
             let album_id = library.albums[idx].id.clone();
-            tracing::debug!("Cover fetcher: fetching {} — {}", artist, title);
+            tracing::info!("Cover fetcher: fetching {} — {}", artist, title);
             (self.on_progress)(format!("Fetching cover: {} — {}", artist, title));
 
             let release_id = library
@@ -89,7 +89,11 @@ impl CoverFetcher {
                     Ok(saved_path) => {
                         library.albums[idx].cover_path = Some(saved_path);
                         report.found += 1;
-                        tracing::debug!("Cover fetcher: found cover for {} — {}", artist, title,);
+                        tracing::info!(
+                            "Cover fetcher: successfully found and saved cover for {} — {}",
+                            artist,
+                            title,
+                        );
                     }
                     Err(e) => {
                         report.errors += 1;
@@ -103,7 +107,7 @@ impl CoverFetcher {
                 },
                 None => {
                     report.missing += 1;
-                    tracing::debug!("Cover fetcher: no cover found for {} — {}", artist, title,);
+                    tracing::info!("Cover fetcher: no cover found for {} — {}", artist, title);
                 }
             }
         }
@@ -156,8 +160,26 @@ impl CoverFetcher {
         artist: &str,
     ) -> Option<Vec<u8>> {
         let mbid = match release_id {
-            Some(id) => id.to_string(),
-            None => self.search_musicbrainz_release(album, artist).await?,
+            Some(id) => {
+                tracing::info!(
+                    "Cover fetcher: using provided MusicBrainz Release ID: {}",
+                    id
+                );
+                id.to_string()
+            }
+            None => {
+                tracing::info!(
+                    "Cover fetcher: no release ID, searching MusicBrainz for album \"{}\" by artist \"{}\"",
+                    album,
+                    artist
+                );
+                let found = self.search_musicbrainz_release(album, artist).await?;
+                tracing::info!(
+                    "Cover fetcher: MusicBrainz search returned Release ID: {}",
+                    found
+                );
+                found
+            }
         };
 
         self.sleep_rate_limit().await;
@@ -243,6 +265,11 @@ impl CoverFetcher {
     }
 
     async fn try_lastfm(&self, album: &str, artist: &str, api_key: &str) -> Option<Vec<u8>> {
+        tracing::info!(
+            "Cover fetcher: querying Last.fm for album \"{}\" by artist \"{}\"",
+            album,
+            artist
+        );
         self.sleep_rate_limit().await;
         let resp = self
             .client

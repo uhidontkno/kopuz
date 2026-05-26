@@ -88,12 +88,18 @@ pub fn track_cover_url_with_album_fallback(
     max_width: u32,
     quality: u32,
 ) -> Option<String> {
+    let can_build_remote = !server_url.is_empty();
+
     if let Some((id, Some(tag))) = parse_jellyfin_path(track_path_str) {
         if tag == "none" {
             return None;
         }
         if let Some(url) = decode_embedded_cover_url(tag) {
             return Some(url);
+        }
+
+        if !can_build_remote {
+            return None;
         }
 
         return Some(jellyfin_image_url(
@@ -117,6 +123,10 @@ pub fn track_cover_url_with_album_fallback(
                     return Some(url);
                 }
 
+            if !can_build_remote {
+                return None;
+            }
+
             return Some(jellyfin_image_url(
                 server_url,
                 album_item_id,
@@ -128,6 +138,9 @@ pub fn track_cover_url_with_album_fallback(
         }
 
     if let Some((id, _)) = parse_jellyfin_path(track_path_str) {
+        if !can_build_remote {
+            return None;
+        }
         return Some(jellyfin_image_url(
             server_url,
             id,

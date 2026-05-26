@@ -41,6 +41,8 @@ pub fn find_folder_cover(dir: &Path) -> Option<PathBuf> {
 
     let entries = std::fs::read_dir(dir).ok()?;
     let mut fallback_image = None;
+    let mut best_idx: Option<usize> = None;
+    let mut best_path = None;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -55,15 +57,17 @@ pub fn find_folder_cover(dir: &Path) -> Option<PathBuf> {
         };
 
         if extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)) {
-            if candidates.iter().any(|c| c.eq_ignore_ascii_case(stem)) {
-                return Some(path);
-            }
-            if fallback_image.is_none() {
+            if let Some(pos) = candidates.iter().position(|c| c.eq_ignore_ascii_case(stem)) {
+                if best_idx.is_none() || pos < best_idx.unwrap() {
+                    best_idx = Some(pos);
+                    best_path = Some(path);
+                }
+            } else if fallback_image.is_none() {
                 fallback_image = Some(path);
             }
         }
     }
-    fallback_image
+    best_path.or(fallback_image)
 }
 
 pub fn is_artist_image_file(path: &Path) -> bool {

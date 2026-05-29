@@ -9,6 +9,7 @@ use config::{AppConfig, UiStyle};
 use dioxus::prelude::*;
 use hooks::PlayerController;
 use reader::models::Track;
+use config::MusicSource;
 
 #[component]
 pub fn TrackRow(
@@ -90,6 +91,9 @@ pub fn TrackRow(
     }
 
     let has_download = on_download.is_some();
+    let is_server = config.read().active_source == MusicSource::Server;
+    let has_download = has_download && is_server;
+
     if has_download {
         let (dl_label, dl_icon) = if is_downloading {
             ("Downloading...", "fa-solid fa-spinner fa-spin")

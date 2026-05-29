@@ -11,9 +11,9 @@ use hooks::PlayerController;
 use reader::models::Track;
 
 pub(crate) fn copy_to_clipboard(text: &str) {
+    let value = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
     let js = format!(
-        "navigator.clipboard.writeText({});",
-        serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string())
+        "navigator.clipboard.writeText({value}).catch((e) => console.error('clipboard writeText failed', e));"
     );
     let _ = dioxus::document::eval(&js);
 }

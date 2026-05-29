@@ -1,4 +1,5 @@
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use std::time::Duration;
 
 pub async fn track_page_url(release_id: Option<&str>, artist: &str, title: &str) -> Option<String> {
     if let Some(id) = release_id {
@@ -29,10 +30,21 @@ async fn search_recording_id(artist: &str, title: &str) -> Option<String> {
         utf8_percent_encode(&query, NON_ALPHANUMERIC)
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(15))
+        .build()
+        .ok()?;
     let res = client
         .get(&url)
-        .header("User-Agent", concat!("Kopuz/", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            concat!(
+                "Kopuz/",
+                env!("CARGO_PKG_VERSION"),
+                " (https://github.com/owlenz/kopuz)"
+            ),
+        )
         .header("Accept", "application/json")
         .send()
         .await

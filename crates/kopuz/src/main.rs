@@ -2008,12 +2008,17 @@ fn App() -> Element {
                 let current = win.window.inner_size().to_logical::<f64>(scale);
                 saved_window_size.set(Some(current));
                 win.window.set_always_on_top(true);
-                let compact_h = if cfg!(target_os = "macos") { 118.0 } else { 96.0 };
+                let compact_h = if cfg!(target_os = "macos") {
+                    118.0
+                } else {
+                    96.0
+                };
                 win.window.set_resizable(true);
                 win.window
                     .set_min_inner_size(Some(LogicalSize::new(260.0, compact_h)));
                 win.window.set_max_inner_size(None::<LogicalSize<f64>>);
-                win.window.set_inner_size(LogicalSize::new(380.0, compact_h));
+                win.window
+                    .set_inner_size(LogicalSize::new(380.0, compact_h));
             } else {
                 win.window.set_always_on_top(false);
                 win.window.set_resizable(true);

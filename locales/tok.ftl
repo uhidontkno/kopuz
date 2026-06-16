@@ -405,6 +405,7 @@ radio_asiadreamradio_desc = insa pi kalama musi J-Pop - J-Pop, J-Rock, J-HipHop,
 radio_live_stream = linja kalama tenpo ni
 
 auto_check_updates = lukin pi sin namako lon tenpo ale
+minimize_to_tray = lili tawa poki ilo
 update_available = sin namako li lon
 update_banner_message = Kopuz { $version } li lon.
 view_release = o lukin e lipu pi sin namako

@@ -405,6 +405,7 @@ radio_asiadreamradio_desc = J-Pop音乐的心脏 - J-Pop, J-Rock, J-HipHop, J-Ja
 radio_live_stream = 直播
 
 auto_check_updates = 自动检查更新
+minimize_to_tray = 最小化到系统托盘
 update_available = 有可用更新
 update_banner_message = Kopuz { $version } 现已可用。
 view_release = 查看发行版

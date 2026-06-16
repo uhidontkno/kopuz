@@ -406,6 +406,7 @@ radio_asiadreamradio_desc = El corazón de la música J-Pop - J-Pop, J-Rock, J-H
 radio_live_stream = Transmisión en vivo
 
 auto_check_updates = Buscar actualizaciones automáticamente
+minimize_to_tray = Minimizar a la bandeja del sistema
 update_available = Actualización disponible
 update_banner_message = Kopuz { $version } está disponible.
 view_release = Ver lanzamiento

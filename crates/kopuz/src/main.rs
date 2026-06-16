@@ -114,6 +114,16 @@ fn build_window_icon() -> Option<Icon> {
     Icon::from_rgba(image.into_raw(), width, height).ok()
 }
 
+// Same source image as the window icon, but the tray expects a
+// `tray_icon::Icon` (distinct type from tao's `Icon`).
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+fn build_tray_icon() -> Option<dioxus::desktop::trayicon::Icon> {
+    let image = image::load_from_memory(include_bytes!("../assets/logo-512.png")).ok()?;
+    let image = image.into_rgba8();
+    let (width, height) = image.dimensions();
+    dioxus::desktop::trayicon::Icon::from_rgba(image.into_raw(), width, height).ok()
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct AvailableUpdate {
@@ -1364,6 +1374,93 @@ fn App() -> Element {
         windows_titlebar::install(hwnd);
         windows_titlebar::set_custom_titlebar_enabled(mode == config::TitlebarMode::Custom);
     });
+
+    // System tray (desktop only). The whole feature is opt-in: the icon only
+    // exists while `minimize_to_tray` is enabled, and dropping the TrayIcon
+    // removes it from the tray. The menu handler is registered once (it only
+    // ever fires while a tray exists) and the close-behavior follows the same
+    // setting, so toggling it in Settings takes effect without a restart.
+    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+    {
+        use dioxus::desktop::trayicon::TrayIcon;
+        use dioxus::desktop::trayicon::menu::{Menu, MenuItem};
+        use dioxus::desktop::{
+            WindowCloseBehaviour, use_tray_menu_event_handler, window,
+        };
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        // TrayIcon isn't `Send`, so it lives in a non-reactive Rc slot rather
+        // than a Signal. The effect creates it on enable and drops it on
+        // disable.
+        let tray_slot: Rc<RefCell<Option<TrayIcon>>> = use_hook(|| Rc::new(RefCell::new(None)));
+
+        use_effect({
+            let tray_slot = tray_slot.clone();
+            move || {
+                use dioxus::desktop::trayicon::TrayIconBuilder;
+                let enabled = config.read().minimize_to_tray;
+                let win = window();
+                win.set_close_behavior(if enabled {
+                    WindowCloseBehaviour::WindowHides
+                } else {
+                    WindowCloseBehaviour::WindowCloses
+                });
+
+                let mut slot = tray_slot.borrow_mut();
+                match (enabled, slot.is_some()) {
+                    (true, false) => {
+                        let menu = Menu::new();
+                        let _ = menu.append_items(&[
+                            &MenuItem::with_id("tray_show", i18n::t("show_window"), true, None),
+                            &MenuItem::with_id(
+                                "tray_playpause",
+                                i18n::t("play_pause"),
+                                true,
+                                None,
+                            ),
+                            &MenuItem::with_id("tray_next", i18n::t("next"), true, None),
+                            &MenuItem::with_id("tray_prev", i18n::t("previous"), true, None),
+                            &MenuItem::with_id("tray_quit", i18n::t("quit"), true, None),
+                        ]);
+                        let mut builder = TrayIconBuilder::new()
+                            .with_tooltip("Kopuz")
+                            .with_menu(Box::new(menu))
+                            .with_menu_on_left_click(false);
+                        if let Some(icon) = build_tray_icon() {
+                            builder = builder.with_icon(icon);
+                        }
+                        match builder.build() {
+                            Ok(tray) => *slot = Some(tray),
+                            Err(e) => tracing::warn!("Failed to build tray icon: {e}"),
+                        }
+                    }
+                    // Drop the icon (removes it from the tray) when turned off.
+                    (false, true) => *slot = None,
+                    _ => {}
+                }
+            }
+        });
+
+        let mut ctrl = ctrl;
+        use_tray_menu_event_handler(move |event| {
+            let win = window();
+            match event.id().as_ref() {
+                "tray_show" => {
+                    let visible = win.window.is_visible();
+                    win.window.set_visible(!visible);
+                    if !visible {
+                        let _ = win.window.set_focus();
+                    }
+                }
+                "tray_playpause" => ctrl.toggle(),
+                "tray_next" => ctrl.play_next(),
+                "tray_prev" => ctrl.play_prev(),
+                "tray_quit" => win.close(),
+                _ => {}
+            }
+        });
+    }
 
     use_effect(move || {
         if !*initial_load_done.read() {

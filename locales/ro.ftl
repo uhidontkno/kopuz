@@ -407,6 +407,7 @@ radio_asiadreamradio_desc = Inima muzicii J-Pop - J-Pop, J-Rock, J-HipHop, J-Jaz
 radio_live_stream = Transmisie în direct
 
 auto_check_updates = Verifică automat actualizările
+minimize_to_tray = Minimizează în bara de sistem
 update_available = Actualizare disponibilă
 update_banner_message = Kopuz { $version } este disponibil.
 view_release = Vezi lansarea

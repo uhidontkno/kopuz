@@ -406,6 +406,7 @@ radio_asiadreamradio_desc = Jantung musik J-Pop - J-Pop, J-Rock, J-HipHop, J-Jaz
 radio_live_stream = Siaran Langsung
 
 auto_check_updates = Periksa pembaruan otomatis
+minimize_to_tray = Kecilkan ke baki sistem
 update_available = Pembaruan tersedia
 update_banner_message = Kopuz { $version } tersedia.
 view_release = Lihat rilis

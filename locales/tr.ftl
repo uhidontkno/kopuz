@@ -407,6 +407,7 @@ radio_asiadreamradio_desc = J-Pop müziğinin kalbi - J-Pop, J-Rock, J-HipHop, J
 radio_live_stream = Canlı Yayın
 
 auto_check_updates = Güncellemeleri otomatik denetle
+minimize_to_tray = Sistem tepsisine küçült
 update_available = Güncelleme mevcut
 update_banner_message = Kopuz { $version } kullanılabilir.
 view_release = Sürümü görüntüle

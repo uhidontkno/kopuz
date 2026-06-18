@@ -56,6 +56,7 @@ connectivity = Connettività
 discord_presence_paused = Mostra lo status in pausa su Discord
 reduce_animations = Animazioni ridotte
 auto_check_updates = Cerca aggiornamenti in automatico
+minimize_to_tray = Riduci a icona nella barra di sistema
 show_source_toggle = Mostra il selettore della sorgente
 titlebar_mode = Barra del titolo
 titlebar_custom = Personalizzata (disegnata dall'app)

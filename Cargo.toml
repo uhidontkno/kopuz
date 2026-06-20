@@ -19,7 +19,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.6.7"
+version = "0.7.0"
 
 # Steer code toward the tracing subscriber (see crates/kopuz/src/logging.rs).
 # Inherited per-crate via `[lints] workspace = true`. Build scripts (cargo:

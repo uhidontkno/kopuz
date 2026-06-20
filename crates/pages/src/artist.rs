@@ -70,6 +70,10 @@ pub fn Artist(
     // In-flight guard for the remote artist-image fetch — page-local; the persisted
     // `fetched_artist_images` map is what skips a refetch across navigations.
     let mut is_fetching_images = use_signal(|| false);
+    // Records that a fetch already ran this mount. Distinguishes "fetched, found
+    // nothing" (e.g. YT yields no images) from "never fetched" — without it an
+    // empty result leaves the map empty and the effect respawns forever.
+    let mut images_fetch_done = use_signal(|| false);
 
     let albums_res = use_albums(source);
     let sample_tracks_res = use_artist_sample_tracks(source, u32::MAX);
@@ -125,7 +129,10 @@ pub fn Artist(
         if config.read().artist_photo_source != ArtistPhotoSource::ArtistPhoto {
             return;
         }
-        if *is_fetching_images.read() || !fetched_artist_images.read().is_empty() {
+        if *is_fetching_images.read()
+            || *images_fetch_done.read()
+            || !fetched_artist_images.read().is_empty()
+        {
             return;
         }
         is_fetching_images.set(true);
@@ -139,6 +146,7 @@ pub fn Artist(
                     .into_iter()
                     .collect();
                 fetched_artist_images.set(images);
+                images_fetch_done.set(true);
                 is_fetching_images.set(false);
             }
             .instrument(tracing::info_span!("artist.fetch_images")),

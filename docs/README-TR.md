@@ -38,11 +38,17 @@ Dede Korkut ile ilişkilendirilir.
 ## Overview
 
 Kopuz; ses dosyaları için yerel dizinlerinizi taramanıza, Jellyfin veya Subsonic
-(Navidrome vb.) sunucunuzdan stream etmenize veya **YouTube Music**'i bir
-streaming backend'i olarak bağlamanıza olanak tanır — her şeyi otomatik olarak
-göz atılabilir bir kütüphanede düzenler. Sanatçılara, albümlere, türlere göre
-gezinebilir veya özel playlist'lerinizi keşfedebilirsiniz. Uygulama, Rust'ın
-gücünü kullanarak performans ve desktop integration için oluşturulmuştur.
+(Navidrome vb.) sunucunuzdan stream etmenize veya **YouTube Music** ya da
+**SoundCloud**'u bir streaming backend'i olarak bağlamanıza olanak tanır, her
+şeyi otomatik olarak göz atılabilir bir kütüphanede düzenler. Sanatçılara,
+albümlere, türlere göre gezinebilir veya özel playlist'lerinizi
+keşfedebilirsiniz. Uygulama, Rust'ın gücünü kullanarak performans ve desktop
+integration için oluşturulmuştur.
+
+Ayarlarınız, taranan kütüphane, playlist'ler ve favoriler yerel bir **SQLite**
+veritabanında (`kopuz.db`) saklanır; arayüz bunu canlı olarak okur, böylece
+değişiklikler anında görünür. Her medya kaynağı kendi kimlik bilgilerini ve
+kendi favorilerini taşır.
 
 ## Features
 
@@ -54,10 +60,19 @@ gücünü kullanarak performans ve desktop integration için oluşturulmuştur.
 - **Native Integration**: Linux (MPRIS), macOS (Now Playing / Remote Command
   Center) ve Windows (System Media Transport Controls) üzerindeki sistem medya
   kontrolleri ile entegre olur.
+- **Mini-Player**: Daha küçük bir now-playing görünümü için bottom bar'dan
+  açıp kapatabileceğiniz kompakt bir oynatıcı katmanı.
+- **Minimize to Tray**: Çıkmak yerine isteğe bağlı olarak sistem tepsisi
+  simgesine kapatın, böylece oynatma arka planda çalışmaya devam eder.
+  **Settings** içinden açıp kapatın. Linux'ta appindicator kütüphanesi gerekir
+  (bkz. Installation notları).
 - **Discord RPC**: Gömülü RPC dahildir!!!
-- **Multiple Backends**: Stream edin (Navidrome works great), YouTube Music'i
-  bağlayın veya sadece yerel bir klasörü gösterin. İstediğiniz gibi karıştırıp
-  eşleştirin.
+- **Multiple Backends**: Jellyfin veya Subsonic uyumlu sunucunuzdan (Navidrome
+  works great) stream edin, YouTube Music ya da SoundCloud'u bağlayın veya sadece
+  yerel bir klasörü gösterin. İstediğiniz gibi karıştırıp eşleştirin. Her kaynak
+  tek bir `MediaSource` katmanı üzerinden sunulur ve arayüz, her servise özel
+  davranışı sabit kodlamak yerine kaynağın yeteneklerine (arama, indirme, radyo,
+  discover, favori senkronizasyonu vb.) göre uyum sağlar.
 - **YouTube Music**: Spotify tarzı bir **Discover** sayfası (önerilen şarkılar,
   playlist'ler, albümler, sanatçılar ve ruh halleri), zengin **artist profiles**
   (banner, en popüler şarkılar, albümler, single'lar, benzer sanatçılar),
@@ -66,6 +81,10 @@ gücünü kullanarak performans ve desktop integration için oluşturulmuştur.
   playlist'leriniz için hesabınızla giriş yapın — veya herkese açık parçaları
   aramak, göz atmak ve oynatmak için **anonymously** (no sign-in) çalıştırın.
   Bkz. [YouTube Music Setup](#youtube-music-setup).
+- **SoundCloud**: Arama, parça oynatma (progressive MP3 ve Go+ AAC/HLS),
+  **Beğenilen parçalarınız** favori olarak, salt okunur playlist'ler ve
+  like/unlike içeren streaming backend'i. İzole bir profilde tek seferlik
+  tarayıcı girişiyle eklenir. Bkz. [SoundCloud Setup](#soundcloud-setup).
 - **Lyrics Support**: Müziğinizi takip etmek için auto-scrolling özelliğiyle
   birlikte gerçek zamanlı senkronize ve düz şarkı sözlerinin keyfini çıkarın.
 - **Favorites**: Parçaları yerel olarak yıldızlayın veya favorileri
@@ -75,6 +94,9 @@ gücünü kullanarak performans ve desktop integration için oluşturulmuştur.
   edin.
 - **Genre Browsing**: Hem yerel hem de sunucu müzikleri için kütüphanenizi türe
   göre tarayın.
+- **File-Type Badges**: Yerel parçalar, parça satırlarında küçük bir format
+  rozeti (MP3, FLAC, WAV vb.) gösterir; böylece kaynak formatı bir bakışta
+  görürsünüz.
 - **Search**: Sanatçılar, albümler ve parçalar arasında gerçek zamanlı
   sonuçlarla arama yapın.
 - **Listening Logs**: En çok neyi dinlediğinizi görebilmeniz için çalma
@@ -310,30 +332,37 @@ xattr -d com.apple.quarantine /Applications/Kopuz.app
 
 ### Where does Kopuz keep its files?
 
-**macOS** üzerinde her şey Library klasörlerinizin altındadır:
+Ayarlarınız, taranan kütüphane, playlist'ler ve favoriler tek bir **SQLite**
+veritabanında, `kopuz.db`, config dizininde tutulur. Albüm kapakları ve indirilen
+parçalar cache dizininde diskte kalır. (Debug build'leri ayrı bir
+`kopuz-debug.db` kullanır, böylece `dx serve` gerçek verinize asla dokunmaz. DB
+konumunu `KOPUZ_DB_PATH` env değişkeniyle değiştirebilirsiniz.)
 
-- `~/Library/Application Support/com.temidaradev.kopuz/config.json` -
-  ayarlarınız
-- `~/Library/Caches/com.temidaradev.kopuz/library.json` - taranan kütüphane
-- `~/Library/Caches/com.temidaradev.kopuz/playlists.json` - playlist'leriniz
+**macOS** üzerinde:
+
+- `~/Library/Application Support/com.temidaradev.kopuz/kopuz.db` - ayarlar,
+  kütüphane, playlist'ler, favoriler
 - `~/Library/Caches/com.temidaradev.kopuz/covers/` - cached albüm kapakları
 - `~/Library/Caches/com.temidaradev.kopuz/offline_tracks/` - indirilen parçalar
 
-**Linux** üzerinde beklendiği gibi XDG spec'ini takip eder:
+**Linux** üzerinde (XDG spec):
 
-- `~/.config/kopuz/config.json` - ayarlarınız
-- `~/.cache/kopuz/library.json` - taranan kütüphane
-- `~/.cache/kopuz/playlists.json` - playlist'leriniz
+- `~/.config/kopuz/kopuz.db` - ayarlar, kütüphane, playlist'ler, favoriler
 - `~/.cache/kopuz/covers/` - cached albüm kapakları
 - `~/.cache/kopuz/offline_tracks/` - indirilen parçalar
 
-**Windows** üzerinde AppData klasörünüzü kullanır:
+**Windows** üzerinde (AppData):
 
-- `%APPDATA%\temidaradev\kopuz\config\config.json` - ayarlarınız
-- `%LOCALAPPDATA%\temidaradev\kopuz\cache\library.json` - taranan kütüphane
-- `%LOCALAPPDATA%\temidaradev\kopuz\cache\playlists.json` - playlist'leriniz
+- `%APPDATA%\temidaradev\kopuz\config\kopuz.db` - ayarlar, kütüphane,
+  playlist'ler, favoriler
 - `%LOCALAPPDATA%\temidaradev\kopuz\cache\covers\` - cached albüm kapakları
 - `%LOCALAPPDATA%\temidaradev\kopuz\cache\offline_tracks\` - indirilen parçalar
+
+> [!NOTE]
+> Eski bir sürümden mi yükseltiyorsunuz? İlk açılışta Kopuz mevcut
+> `library.json` ve `playlists.json` dosyalarınızı `kopuz.db` içine aktarır ve
+> geriye `*.json.bak` yedekleri bırakır. Eski JSON dosyaları bundan sonra
+> okunmaz.
 
 Kapaklar görünmüyorsa veya kütüphane hatalı görünüyorsa, cache klasörünü silip
 rescan düğmesine basmanız yeterlidir.
@@ -343,20 +372,12 @@ rescan düğmesine basmanız yeterlidir.
 Kopuz, YouTube Music'i bir streaming backend'i olarak kullanabilir. Şuradan
 ekleyin: **Settings → Media servers → Add → YouTube Music**.
 
-### Prerequisite: rustypipe-botguard
-
-Oynatma (hem oturum açılmış hem de anonim modlarda), YouTube'un stream URL'leri
-için gerektirdiği PO token'ı üretmek üzere
-[`rustypipe-botguard`](https://crates.io/crates/rustypipe-botguard) yardımcısına
-ihtiyaç duyar. Bunu bir kez yükleyin:
-
-```bash
-cargo install rustypipe-botguard --version 0.1.2
-```
-
-Sunucu ekleme iletişim kutusunda, bunun `PATH` üzerinde olduğunu doğrulamak için
-bir **Check rustypipe-botguard** düğmesi bulunur. Bu olmadan parçalar resolve
-edilir ancak oynatılamaz.
+> [!NOTE]
+> Artık harici bir yardımcıya gerek yok. Anonim oynatma bir content PO token
+> gerektirir; Kopuz bunu artık YouTube'un BotGuard'ını çalıştıran gizli bir
+> WebView ile **uygulama içinde** üretir. Eski `rustypipe-botguard` subprocess'i
+> kaldırıldı, yani `cargo install` yapacak bir şey yok ve Flatpak içinde de
+> çalışır.
 
 ### Choosing a mode
 
@@ -389,6 +410,22 @@ Music Premium kilitli parçalar, birincil yol `UNPLAYABLE` döndürdüğünde ye
 bir [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) resolve işlemine fallback
 yapar, bu nedenle `yt-dlp`'nin kurulu olması bunlar için yardımcı olur. Anonim
 mod, Premium-only içerikleri hiçbir şekilde oynatamaz.
+
+## SoundCloud Setup
+
+Kopuz, SoundCloud'u bir streaming backend'i olarak kullanabilir. Şuradan
+ekleyin: **Settings → Media servers → Add → SoundCloud**.
+
+Yazılacak bir URL veya parola yoktur. Kopuz, `soundcloud.com/signin` adresini
+**izole bir tarayıcı profilinde** (taze, ayrı bir oturum; normal taramanıza asla
+dokunulmaz) açar, giriş yapmanızı bekler ve oturumun `oauth_token` değerini
+çıkarır. Hangi kurulu Chromium ailesi tarayıcının kullanılacağını seçin (Chrome,
+Chromium, Brave, Edge veya Vivaldi).
+
+Giriş yaptıktan sonra arama, parça oynatma (progressive MP3 artı Go+ AAC/HLS
+stream'leri), **Beğenilen parçalarınız** favori olarak, playlist'lerinize salt
+okunur erişim ve like/unlike elde edersiniz. Kaynağı kaldırmak izole profilini
+temizler.
 
 ## Logs & Debugging
 
@@ -521,6 +558,7 @@ görüntüleri bellekte ihtiyaç duyulandan daha uzun süre tutmuyoruz.
 - **Symphonia**: Ses kod çözme kütüphanesi
 - **Cpal**: Ses giriş/çıkış kütüphanesi
 - **Lofty**: Metadata ayrıştırma
+- **SQLite / sqlx**: Derleme zamanında kontrol edilen sorgularla yerel depolama
 - **TailwindCSS**: CSS tabanlı stil framework'ü
 
 ## Crypto Donation

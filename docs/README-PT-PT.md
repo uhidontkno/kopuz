@@ -429,12 +429,9 @@ diretamente para aqui):
 | Ficheiro                | O que é                                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------------------------ |
 | `latest.log`            | A sessão atual. Temporização de spans + eventos; o registo em tempo real.                        |
-| `kopuz-<timestamp>.log` | Sessões anteriores, arquivadas no arranque (mantém as últimas 10). Um reinício nunca             |
-|                         | apaga a execução anterior.                                                                       |
-| `crash-<timestamp>.txt` | Escrito **apenas num crash** (pânico do Rust): mensagem, backtrace, cauda do registo recente,    |
-|                         | versão da app/SO.                                                                                |
-| `kopuz-trace.json`      | Rastreio de desempenho — apenas quando o rastreio está ativado (ver abaixo).                     |
-|                         | Sobrescrito em cada execução.                                                                    |
+| `kopuz-<timestamp>.log` | Sessões anteriores, arquivadas no arranque (mantém as últimas 10). Um reinício nunca apaga a execução anterior.|
+| `crash-<timestamp>.txt` | Escrito **apenas num crash** (pânico do Rust): mensagem, backtrace, cauda do registo recente, versão da app/SO.|
+| `kopuz-trace.json`      | Rastreio de desempenho — apenas quando o rastreio está ativado (ver abaixo). Sobrescrito em cada execução.     |
 
 Os timestamps são em UTC `YYYY-MM-DD_HH-MM-S`, por isso os ficheiros ordenam-se cronologicamente.
 

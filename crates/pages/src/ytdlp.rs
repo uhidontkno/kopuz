@@ -1,8 +1,43 @@
 use config::{AppConfig, YtdlpOptions};
+use dioxus::core::spawn_forever;
 use dioxus::prelude::*;
 use std::fs::{self, OpenOptions};
 use std::io::BufRead;
 use std::path::PathBuf;
+
+/// App-lifetime job list: downloads keep running (and keep their live
+/// progress) when the user navigates away from the page (#327).
+static JOBS: GlobalSignal<Vec<DownloadJob>> = Signal::global(Vec::new);
+
+/// Completions waiting to be applied to config history / the rescan trigger.
+/// The detached job driver can't write those directly — they're owned by the
+/// App component's scope, and a ROOT-scoped task using them trips Dioxus's
+/// cross-scope lint — so it pushes here and [`use_ytdlp_completion_sink`]
+/// (installed once in App) drains in the owning scope.
+static FINISHED: GlobalSignal<Vec<(config::YtdlpHistoryEntry, bool)>> = Signal::global(Vec::new);
+
+/// Install in App: applies finished yt-dlp jobs to the config history and
+/// bumps the rescan trigger for successful ones.
+pub fn use_ytdlp_completion_sink(mut config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) {
+    use_effect(move || {
+        if FINISHED.read().is_empty() {
+            return;
+        }
+        let drained: Vec<_> = FINISHED.write().drain(..).collect();
+        let mut rescan = false;
+        {
+            let mut cfg = config.write();
+            for (entry, ok) in drained {
+                rescan |= ok;
+                cfg.ytdlp_history.insert(0, entry);
+                cfg.ytdlp_history.truncate(200);
+            }
+        }
+        if rescan {
+            *trigger_rescan.write() += 1;
+        }
+    });
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DownloadJob {
@@ -99,6 +134,16 @@ fn search_dirs() -> &'static [PathBuf] {
                     dirs.push(dir);
                 }
             }
+        }
+
+        // Fallback for portable installs: a `yt-dlp(.exe)` dropped next to the app.
+        // On Linux the package puts it on PATH (flatpak/AUR/nix); Windows bundles
+        // nothing, so this lets a user just place the binary beside kopuz.exe.
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(exe_dir) = exe.parent()
+            && !dirs.iter().any(|d| d == exe_dir)
+        {
+            dirs.push(exe_dir.to_path_buf());
         }
 
         dirs
@@ -201,6 +246,15 @@ fn build_command(
     let binary = find_ytdlp();
     let mut cmd = std::process::Command::new(&binary);
     cmd.env("PATH", augmented_path());
+    // Suppress the console window when yt-dlp spawns on Windows. CREATE_NO_WINDOW
+    // gives the child no console, so its standard handles are only valid if we
+    // redirect them — see the `stdin(null)` below, without which yt-dlp's Python
+    // hits "[Errno 22] Invalid argument" on file I/O via the broken fd 0.
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
 
     let work_dir = if !out.is_empty() {
         PathBuf::from(out)
@@ -313,8 +367,24 @@ fn build_command(
     }
 
     cmd.arg(url)
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+
+    // Log the fully-resolved invocation so a failure (e.g. a Windows "[Errno 22]
+    // unable to open for writing" path) is diagnosable from the log alone.
+    let args: Vec<String> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    tracing::info!(
+        target: "ytdlp",
+        binary = %binary,
+        located = std::path::Path::new(&binary).is_absolute(),
+        cwd = ?cmd.get_current_dir(),
+        args = ?args,
+        "yt-dlp: built download command"
+    );
 
     cmd
 }
@@ -392,35 +462,37 @@ fn parse_line(line: &str) -> Option<LineInfo> {
 }
 
 #[component]
-pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -> Element {
+pub fn YtdlpPage(config: Signal<AppConfig>) -> Element {
     let mut url_input = use_signal(String::new);
     let mut format = use_signal(|| AudioFormat::BestAudio);
-    let mut jobs = use_signal(Vec::<DownloadJob>::new);
     let mut out_dir = use_signal(|| config.peek().ytdlp_output_dir.clone());
     let mut show_opts = use_signal(|| false);
     let mut preflight_error = use_signal(|| Option::<String>::None);
 
     use_hook(move || {
+        // Seed from history only while the session list is empty — a remount
+        // must not clobber jobs that are still running.
+        if !JOBS.read().is_empty() {
+            return;
+        }
         let history = config.peek().ytdlp_history.clone();
-        jobs.set(
-            history
-                .iter()
-                .map(|e| DownloadJob {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    url: e.url.clone(),
-                    title: e.title.clone(),
-                    format: AudioFormat::from_str(&e.format),
-                    progress: if e.status == "completed" { 100.0 } else { 0.0 },
-                    status: if e.status == "completed" {
-                        JobStatus::Completed
-                    } else {
-                        JobStatus::Failed(e.error.clone().unwrap_or_default())
-                    },
-                    speed: String::new(),
-                    eta: String::new(),
-                })
-                .collect(),
-        );
+        *JOBS.write() = history
+            .iter()
+            .map(|e| DownloadJob {
+                id: uuid::Uuid::new_v4().to_string(),
+                url: e.url.clone(),
+                title: e.title.clone(),
+                format: AudioFormat::from_str(&e.format),
+                progress: if e.status == "completed" { 100.0 } else { 0.0 },
+                status: if e.status == "completed" {
+                    JobStatus::Completed
+                } else {
+                    JobStatus::Failed(e.error.clone().unwrap_or_default())
+                },
+                speed: String::new(),
+                eta: String::new(),
+            })
+            .collect();
     });
 
     let mut do_download = move || {
@@ -431,7 +503,7 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
 
         preflight_error.set(None);
 
-        if let Err(error) = run_preflight_checks(&url, &out_dir(), &jobs.read()) {
+        if let Err(error) = run_preflight_checks(&url, &out_dir(), &JOBS.read()) {
             preflight_error.set(Some(error));
             return;
         }
@@ -441,7 +513,7 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
         let opts = config.peek().ytdlp_options.clone();
         let job_id = uuid::Uuid::new_v4().to_string();
 
-        jobs.write().insert(
+        JOBS.write().insert(
             0,
             DownloadJob {
                 id: job_id.clone(),
@@ -456,8 +528,11 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
         );
         url_input.set(String::new());
 
-        spawn(async move {
-            if let Some(j) = jobs.write().iter_mut().find(|j| j.id == job_id) {
+        // spawn_forever: the driver must outlive the page or navigating away
+        // kills the download mid-flight (#327). It only writes globals (JOBS,
+        // FINISHED) — App-scoped signals would trip the cross-scope lint.
+        spawn_forever(async move {
+            if let Some(j) = JOBS.write().iter_mut().find(|j| j.id == job_id) {
                 j.status = JobStatus::Downloading;
             }
 
@@ -469,7 +544,9 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                 let mut child = match cmd.spawn() {
                     Ok(c) => c,
                     Err(e) => {
-                        let msg = if e.kind() == std::io::ErrorKind::NotFound {
+                        let not_found = e.kind() == std::io::ErrorKind::NotFound;
+                        tracing::error!(target: "ytdlp", error = %e, not_found, "yt-dlp: spawn failed");
+                        let msg = if not_found {
                             i18n::t("ytdlp_error_not_found")
                         } else {
                             i18n::t_with("ytdlp_error_start", &[("error", e.to_string())])
@@ -478,6 +555,19 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                         return;
                     }
                 };
+
+                // Drain stderr on its own thread: reading stdout to completion
+                // first and stderr second deadlocks if yt-dlp fills the stderr pipe
+                // buffer (~64 KB, common on a failing download) before stdout closes.
+                let stderr_thread = child.stderr.take().map(|stderr| {
+                    std::thread::spawn(move || {
+                        std::io::BufReader::new(stderr)
+                            .lines()
+                            .map_while(Result::ok)
+                            .filter(|l| l.contains("ERROR"))
+                            .collect::<Vec<_>>()
+                    })
+                });
 
                 if let Some(stdout) = child.stdout.take() {
                     for line in std::io::BufReader::new(stdout)
@@ -489,27 +579,28 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                         }
                     }
                 }
-                if let Some(stderr) = child.stderr.take() {
-                    let errs: Vec<String> = std::io::BufReader::new(stderr)
-                        .lines()
-                        .map_while(Result::ok)
-                        .filter(|l| l.contains("ERROR"))
-                        .collect();
-                    if !errs.is_empty() {
-                        let _ = tx.send(LineInfo::Error(errs.join("\n")));
-                    }
+
+                let errs = stderr_thread
+                    .map(|t| t.join().unwrap_or_default())
+                    .unwrap_or_default();
+                if !errs.is_empty() {
+                    tracing::warn!(target: "ytdlp", "yt-dlp stderr: {}", errs.join(" | "));
+                    let _ = tx.send(LineInfo::Error(errs.join("\n")));
                 }
                 match child.wait() {
                     Ok(s) if s.success() => {
+                        tracing::info!(target: "ytdlp", "yt-dlp: download finished");
                         let _ = tx.send(LineInfo::Done);
                     }
                     Ok(s) => {
+                        tracing::warn!(target: "ytdlp", status = %s, "yt-dlp: exited non-zero");
                         let _ = tx.send(LineInfo::Error(i18n::t_with(
                             "ytdlp_error_exit",
                             &[("status", s.to_string())],
                         )));
                     }
                     Err(e) => {
+                        tracing::error!(target: "ytdlp", error = %e, "yt-dlp: wait failed");
                         let _ = tx.send(LineInfo::Error(e.to_string()));
                     }
                 }
@@ -519,7 +610,7 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                 let id = &job_id;
                 match info {
                     LineInfo::Progress { pct, speed, eta } => {
-                        if let Some(j) = jobs.write().iter_mut().find(|j| &j.id == id) {
+                        if let Some(j) = JOBS.write().iter_mut().find(|j| &j.id == id) {
                             j.progress = pct;
                             j.speed = speed;
                             j.eta = eta;
@@ -527,18 +618,18 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                         }
                     }
                     LineInfo::Title(title) => {
-                        if let Some(j) = jobs.write().iter_mut().find(|j| &j.id == id) {
+                        if let Some(j) = JOBS.write().iter_mut().find(|j| &j.id == id) {
                             j.title = title;
                         }
                     }
                     LineInfo::Processing => {
-                        if let Some(j) = jobs.write().iter_mut().find(|j| &j.id == id) {
+                        if let Some(j) = JOBS.write().iter_mut().find(|j| &j.id == id) {
                             j.status = JobStatus::Processing;
                             j.progress = 100.0;
                         }
                     }
                     LineInfo::Done => {
-                        let entry = jobs.read().iter().find(|j| &j.id == id).map(|j| {
+                        let entry = JOBS.read().iter().find(|j| &j.id == id).map(|j| {
                             config::YtdlpHistoryEntry {
                                 url: j.url.clone(),
                                 title: j.title.clone(),
@@ -547,22 +638,19 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                                 error: None,
                             }
                         });
-                        if let Some(j) = jobs.write().iter_mut().find(|j| &j.id == id) {
+                        if let Some(j) = JOBS.write().iter_mut().find(|j| &j.id == id) {
                             j.status = JobStatus::Completed;
                             j.progress = 100.0;
                             j.speed = String::new();
                             j.eta = String::new();
                         }
                         if let Some(e) = entry {
-                            let mut cfg = config.write();
-                            cfg.ytdlp_history.insert(0, e);
-                            cfg.ytdlp_history.truncate(200);
+                            FINISHED.write().push((e, true));
                         }
-                        *trigger_rescan.write() += 1;
                         break;
                     }
                     LineInfo::Error(msg) => {
-                        let entry = jobs.read().iter().find(|j| &j.id == id).map(|j| {
+                        let entry = JOBS.read().iter().find(|j| &j.id == id).map(|j| {
                             config::YtdlpHistoryEntry {
                                 url: j.url.clone(),
                                 title: j.title.clone(),
@@ -571,13 +659,11 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                                 error: Some(msg.clone()),
                             }
                         });
-                        if let Some(j) = jobs.write().iter_mut().find(|j| &j.id == id) {
+                        if let Some(j) = JOBS.write().iter_mut().find(|j| &j.id == id) {
                             j.status = JobStatus::Failed(msg);
                         }
                         if let Some(e) = entry {
-                            let mut cfg = config.write();
-                            cfg.ytdlp_history.insert(0, e);
-                            cfg.ytdlp_history.truncate(200);
+                            FINISHED.write().push((e, false));
                         }
                         break;
                     }
@@ -683,13 +769,13 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                 OptionsPanel { config }
             }
 
-            if !jobs.read().is_empty() {
+            if !JOBS.read().is_empty() {
                 div { class: "space-y-2 mt-2",
                     div { class: "flex justify-end mb-1",
                         button {
                             class: "text-slate-600 hover:text-slate-400 text-xs transition-colors",
                             onclick: move |_| {
-                                jobs.write().retain(|j| matches!(
+                                JOBS.write().retain(|j| matches!(
                                     j.status,
                                     JobStatus::Downloading | JobStatus::Processing | JobStatus::Pending
                                 ));
@@ -698,7 +784,7 @@ pub fn YtdlpPage(config: Signal<AppConfig>, mut trigger_rescan: Signal<usize>) -
                             "{i18n::t(\"ytdlp_clear_history\")}"
                         }
                     }
-                    for job in jobs.read().clone().into_iter() {
+                    for job in JOBS.read().clone().into_iter() {
                         JobRow { job }
                     }
                 }

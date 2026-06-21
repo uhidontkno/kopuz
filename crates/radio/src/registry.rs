@@ -95,7 +95,11 @@ async fn fetch_content(
             } else {
                 let base = base_url_or_dir
                     .filter(|s| s.starts_with("http://") || s.starts_with("https://"))
-                    .unwrap_or("http://localhost");
+                    .ok_or_else(|| {
+                        RegistryError::InvalidUrl(
+                            "Relative manifest URL requires an HTTP(S) base URL".to_string(),
+                        )
+                    })?;
                 format!("{}/{}", base, url_or_path.trim_start_matches("./"))
             };
 

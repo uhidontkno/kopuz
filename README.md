@@ -12,7 +12,7 @@
   </a>
   <img src="https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white" alt="Rust">
   <img src="https://github.com/Kopuz-org/kopuz/actions/workflows/build.yml/badge.svg" alt="Build">
-  <img src="https://github.com/user-attachments/assets/2b12ec40-2fcb-45e9-969e-ef99b4654957" alt="Kopuz">
+  <img src="https://github.com/user-attachments/assets/b7322455-d407-4f42-ae43-8a83fbb8f74f" alt="Kopuz">
 
 <br/>
   <br/>
@@ -39,10 +39,14 @@ this is mythological rather than historical.
 
 Kopuz allows you to scan your local directories for audio files, stream from
 your Jellyfin or Subsonic (Navidrome, etc.) server, or connect **YouTube Music**
-as a streaming backend — automatically organizing everything into a browsable
-library. You can navigate by artists, albums, genres, or explore your custom
-playlists. The application is built for performance and desktop integration,
-utilizing the power of Rust.
+or **SoundCloud** as a streaming backend, automatically organizing everything
+into a browsable library. You can navigate by artists, albums, genres, or
+explore your custom playlists. The application is built for performance and
+desktop integration, utilizing the power of Rust.
+
+Library, playlists, favorites, and settings are stored in a local **SQLite**
+database (`kopuz.db`); the UI reads it live so changes show up immediately. Each
+media source carries its own credentials and its own favorites.
 
 ## Features
 
@@ -54,10 +58,18 @@ utilizing the power of Rust.
 - **Native Integration**: Integrates with system media controls on Linux
   (MPRIS), macOS (Now Playing / Remote Command Center), and Windows (System
   Media Transport Controls).
+- **Mini-Player**: A compact player overlay you can toggle from the bottom bar
+  for a smaller now-playing view.
+- **Minimize to Tray**: Optionally close to a system tray icon instead of
+  quitting, so playback keeps running in the background. Toggle in **Settings**.
+  Requires the appindicator library on Linux (see Installation notes).
 - **Discord RPC**: Embedded RPC included!!!
 - **Multiple Backends**: Stream from your Jellyfin or Subsonic-compatible server
-  (Navidrome works great), connect YouTube Music, or just point it at a local
-  folder. Mix and match as you like.
+  (Navidrome works great), connect YouTube Music or SoundCloud, or just point it
+  at a local folder. Mix and match as you like. Every source is exposed through
+  one unified `MediaSource` layer, and the UI adapts to each source's
+  capabilities (search, downloads, radio, discover, favorites sync, etc.) rather
+  than hardcoding per-service behavior.
 - **YouTube Music**: Full streaming backend with a Spotify-style **Discover**
   page (recommended songs, playlists, albums, artists, and moods), rich **artist
   profiles** (banner, top songs, albums, singles, related artists),
@@ -65,6 +77,10 @@ utilizing the power of Rust.
   Sign in with your account for your library, Liked Music, and playlists — or
   run it **anonymously** (no sign-in) for browse, search, and playback of public
   tracks. See [YouTube Music Setup](#youtube-music-setup).
+- **SoundCloud**: Streaming backend with search, track playback (progressive MP3
+  and Go+ AAC/HLS), your **Liked tracks** as favorites, read-only playlists, and
+  like/unlike. Added via a one-time browser sign-in in an isolated profile. See
+  [SoundCloud Setup](#soundcloud-setup).
 - **Lyrics Support**: Enjoy real-time synced and plain lyrics, complete with
   auto-scrolling to follow along with your music.
 - **Favorites**: Star tracks locally or sync favorites with your
@@ -73,6 +89,8 @@ utilizing the power of Rust.
   whole albums at once, and sync playlists to your server.
 - **Genre Browsing**: Browse your library by genre for both local and server
   music.
+- **File-Type Badges**: Local tracks show a small format badge (MP3, FLAC, WAV,
+  etc.) in track rows so you can see the source format at a glance.
 - **Search**: Search across artists, albums, and tracks with real-time results.
 - **Listening Logs**: Tracks play counts locally so you can see what you
   actually listen to most.
@@ -312,30 +330,36 @@ xattr -d com.apple.quarantine /Applications/Kopuz.app
 
 ### Where does Kopuz keep its files?
 
-On **macOS** everything lives under your Library folders:
+Your settings, scanned library, playlists, and favorites all live in a single
+**SQLite** database, `kopuz.db`, in the config directory. Album art and
+downloaded tracks stay on disk in the cache directory. (Debug builds use a
+separate `kopuz-debug.db` so `dx serve` never touches your real data. You can
+override the DB location with the `KOPUZ_DB_PATH` env var.)
 
-- `~/Library/Application Support/com.temidaradev.kopuz/config.json` - your
-  settings
-- `~/Library/Caches/com.temidaradev.kopuz/library.json` - the scanned library
-- `~/Library/Caches/com.temidaradev.kopuz/playlists.json` - your playlists
+On **macOS**:
+
+- `~/Library/Application Support/com.temidaradev.kopuz/kopuz.db` - settings,
+  library, playlists, favorites
 - `~/Library/Caches/com.temidaradev.kopuz/covers/` - cached album art
 - `~/Library/Caches/com.temidaradev.kopuz/offline_tracks/` - downloaded tracks
 
-On **Linux** it follows the XDG spec like you'd expect:
+On **Linux** (XDG spec):
 
-- `~/.config/kopuz/config.json` - your settings
-- `~/.cache/kopuz/library.json` - the scanned library
-- `~/.cache/kopuz/playlists.json` - your playlists
+- `~/.config/kopuz/kopuz.db` - settings, library, playlists, favorites
 - `~/.cache/kopuz/covers/` - cached album art
 - `~/.cache/kopuz/offline_tracks/` - downloaded tracks
 
-On **Windows** it uses your AppData folder:
+On **Windows** (AppData):
 
-- `%APPDATA%\temidaradev\kopuz\config\config.json` - your settings
-- `%LOCALAPPDATA%\temidaradev\kopuz\cache\library.json` - the scanned library
-- `%LOCALAPPDATA%\temidaradev\kopuz\cache\playlists.json` - your playlists
+- `%APPDATA%\temidaradev\kopuz\config\kopuz.db` - settings, library, playlists,
+  favorites
 - `%LOCALAPPDATA%\temidaradev\kopuz\cache\covers\` - cached album art
 - `%LOCALAPPDATA%\temidaradev\kopuz\cache\offline_tracks\` - downloaded tracks
+
+> [!NOTE]
+> Upgrading from an older version? On first launch Kopuz imports your existing
+> `library.json` and `playlists.json` into `kopuz.db`, leaving `*.json.bak`
+> backups behind. The old JSON files are no longer read after that.
 
 If covers aren't showing or the library looks off, just delete the cache folder
 and hit rescan.
@@ -345,18 +369,11 @@ and hit rescan.
 Kopuz can use YouTube Music as a streaming backend. Add it from **Settings →
 Media servers → Add → YouTube Music**.
 
-### Prerequisite: rustypipe-botguard
-
-Playback (in both signed-in and anonymous modes) needs the
-[`rustypipe-botguard`](https://crates.io/crates/rustypipe-botguard) helper to
-mint the PO token YouTube requires for stream URLs. Install it once:
-
-```bash
-cargo install rustypipe-botguard --version 0.1.2
-```
-
-The Add-server dialog has a **Check rustypipe-botguard** button to confirm it's
-on your `PATH`. Without it, tracks resolve but fail to play.
+> [!NOTE]
+> No external helper is needed anymore. Anonymous playback requires a content PO
+> token, which Kopuz now mints **in-app** with a hidden WebView running
+> YouTube's BotGuard. The old `rustypipe-botguard` subprocess is gone, so
+> there's nothing to `cargo install` and it works inside Flatpak.
 
 ### Choosing a mode
 
@@ -387,6 +404,21 @@ Music Premium-locked tracks fall back to a local
 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) resolve when the primary path
 returns `UNPLAYABLE`, so having `yt-dlp` installed helps for those. Anonymous
 mode can't play Premium-only content at all.
+
+## SoundCloud Setup
+
+Kopuz can use SoundCloud as a streaming backend. Add it from **Settings → Media
+servers → Add → SoundCloud**.
+
+There's no URL or password to type. Kopuz opens `soundcloud.com/signin` in an
+**isolated browser profile** (a fresh, separate session; your normal browsing is
+never touched), waits for you to log in, and pulls the session's `oauth_token`.
+Pick which installed Chromium-family browser to use (Chrome, Chromium, Brave,
+Edge, or Vivaldi).
+
+Once signed in you get search, track playback (progressive MP3 plus Go+ AAC/HLS
+streams), your **Liked tracks** as favorites, read-only access to your
+playlists, and like/unlike. Removing the source cleans up its isolated profile.
 
 ## Logs & Debugging
 
@@ -510,6 +542,7 @@ longer than needed.
 - **Symphonia**: Audio decoding library
 - **Cpal**: Audio I/O library
 - **Lofty**: Metadata parsing
+- **SQLite / sqlx**: Local storage with compile-time-checked queries
 - **TailwindCSS**: Styling framework based on CSS
 
 ## Crypto Donation

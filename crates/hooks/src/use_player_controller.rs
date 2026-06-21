@@ -1655,7 +1655,7 @@ impl PlayerController {
         let mut rest: Vec<usize> = (0..queue_len).filter(|&i| i != current_idx).collect();
         rest.shuffle(&mut rand::rng());
         order.extend(rest);
-        
+
         // reset current queue index to match the currently played track (now moved at pos 0)
         // will be used as a pointer to the retrieve the current track in the shuffled order
         self.current_queue_index.set(0);

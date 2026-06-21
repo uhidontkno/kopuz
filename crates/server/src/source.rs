@@ -347,6 +347,15 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("album tracks"))
     }
 
+    /// The full remote album (header metadata + tracks) for the YT-Music-style
+    /// album page. Default unsupported; only catalog remotes (YT) override.
+    async fn fetch_album(
+        &self,
+        _browse_id: &str,
+    ) -> Result<crate::ytmusic::discover::YtAlbum, SourceError> {
+        Err(SourceError::unsupported("album"))
+    }
+
     /// One page of a remote playlist: `cursor = None` for the first page, then
     /// the returned cursor for each next (`None` once exhausted). Lets a UI loop
     /// stream a long playlist (play page 1 instantly, queue the rest) without a
@@ -1860,6 +1869,16 @@ impl MediaSource for YtSource {
     async fn fetch_album_tracks(&self, browse_id: &str) -> Result<Vec<reader::Track>, SourceError> {
         self.client
             .fetch_album_tracks(browse_id)
+            .await
+            .map_err(SourceError::from)
+    }
+
+    async fn fetch_album(
+        &self,
+        browse_id: &str,
+    ) -> Result<crate::ytmusic::discover::YtAlbum, SourceError> {
+        self.client
+            .fetch_album(browse_id)
             .await
             .map_err(SourceError::from)
     }

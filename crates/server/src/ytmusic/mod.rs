@@ -271,6 +271,14 @@ impl YouTubeMusicClient {
         discover::fetch_album_tracks(browse_id, self.cookies.as_deref().unwrap_or("")).await
     }
 
+    /// The full album (header metadata — title, artist, year, cover — plus every
+    /// track). The album page uses this for its YT-Music-style header; the
+    /// thinner [`fetch_album_tracks`](Self::fetch_album_tracks) is for callers
+    /// that only queue the tracks.
+    pub async fn fetch_album(&self, browse_id: &str) -> Result<discover::YtAlbum, String> {
+        discover::fetch_album(browse_id, self.cookies.as_deref().unwrap_or("")).await
+    }
+
     pub async fn fetch_artist(&self, channel_id: &str) -> Result<discover::YtArtist, String> {
         discover::fetch_artist(channel_id, self.cookies.as_deref().unwrap_or("")).await
     }

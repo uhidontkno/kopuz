@@ -12,12 +12,31 @@ use hooks::db_reactivity::Table;
 use hooks::use_db_queries::{
     use_active_source, use_album, use_album_tracks, use_albums, use_tracks_by_keys,
 };
+use server::source::TrackFavorite;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::server::download_manager::{
     DownloadQueue, DownloadStatus, delete_downloads, queue_downloads,
 };
+
+/// Copy a link to the clipboard and flash a small toast. Used by the YT album
+/// page's share button (the `track_row` clipboard helper is crate-private to
+/// `components`, so the page carries its own tiny copy).
+fn copy_album_link(url: String) {
+    let value = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+    let js = format!(
+        "navigator.clipboard.writeText({value}).then(() => {{\
+            let t = document.getElementById('kopuz-toast');\
+            if (!t) {{ t = document.createElement('div'); t.id = 'kopuz-toast';\
+                t.style.cssText = 'position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:rgba(20,20,20,0.95);color:#fff;padding:10px 18px;border-radius:8px;font:14px system-ui,sans-serif;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.4);pointer-events:none;border:1px solid rgba(255,255,255,0.1);';\
+                document.body.appendChild(t); }}\
+            t.textContent = 'Copied link'; t.style.opacity = '1';\
+            clearTimeout(t._h); t._h = setTimeout(() => {{ t.style.opacity = '0'; }}, 1800);\
+        }}).catch((e) => console.error('clipboard writeText failed', e));"
+    );
+    let _ = dioxus::document::eval(&js);
+}
 
 /// One album-card menu entry, tagged so dispatch survives capability gating.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -413,27 +432,29 @@ fn AlbumDetail(
     // Catalog remotes (YT) store albums under a title+artist hash with no
     // browse id, so the library only ever holds the few tracks the user saved —
     // an album page would show 1 of 18 songs. Resolve the album's browse id on
-    // demand and fetch its full track list, the way YT Music shows it. Empty for
-    // local/other sources (gated on `discover`) and while offline.
-    let remote_album_res = {
+    // demand and fetch the full album (header + every track), the way YT Music
+    // shows it. `None` for local/other sources (gated on `discover`) and while
+    // offline; drives both the full track list and the YT-styled header.
+    let remote_album_res: Resource<Option<::server::ytmusic::discover::YtAlbum>> = {
         let active_source = active_source;
         use_resource(move || {
             let want = caps().discover && !*is_offline.read();
             let album = album_res.read().clone().flatten();
             let src = active_source.peek().clone();
             async move {
-                let Some(album) = album else {
-                    return Vec::new();
-                };
+                let album = album?;
                 if !want || album.title.trim().is_empty() {
-                    return Vec::new();
+                    return None;
                 }
-                let Ok(Some(browse_id)) =
-                    src.resolve_album_browse_id(&album.title, &album.artist).await
-                else {
-                    return Vec::new();
-                };
-                src.fetch_album_tracks(&browse_id).await.unwrap_or_default()
+                let browse_id = src
+                    .resolve_album_browse_id(&album.title, &album.artist)
+                    .await
+                    .ok()
+                    .flatten()?;
+                src.fetch_album(&browse_id)
+                    .await
+                    .ok()
+                    .filter(|a| !a.tracks.is_empty())
             }
         })
     };
@@ -444,21 +465,21 @@ fn AlbumDetail(
 
         // Full album from the catalog remote (already in album order). Used
         // whenever it resolved; the locally-saved subset is the fallback.
-        if !offline {
-            let mut remote = remote_album_res.read().clone().unwrap_or_default();
-            if !remote.is_empty() {
-                remote.sort_by(|a, b| {
-                    a.disc_number
-                        .unwrap_or(1)
-                        .cmp(&b.disc_number.unwrap_or(1))
-                        .then_with(|| {
-                            a.track_number
-                                .unwrap_or(0)
-                                .cmp(&b.track_number.unwrap_or(0))
-                        })
-                });
-                return remote;
-            }
+        if !offline
+            && let Some(remote) = remote_album_res.read().clone().flatten()
+        {
+            let mut remote = remote.tracks;
+            remote.sort_by(|a, b| {
+                a.disc_number
+                    .unwrap_or(1)
+                    .cmp(&b.disc_number.unwrap_or(1))
+                    .then_with(|| {
+                        a.track_number
+                            .unwrap_or(0)
+                            .cmp(&b.track_number.unwrap_or(0))
+                    })
+            });
+            return remote;
         }
 
         let mut tracks: Vec<reader::models::Track> = tracks_res
@@ -546,8 +567,36 @@ fn AlbumDetail(
         })
     };
 
+    // YT-Music-style album page: the whole catalog-remote (YT) side renders this,
+    // from the moment the page opens — header built from the local album row so it
+    // shows instantly, track list filling from the locally-saved subset until the
+    // remote album resolves the full listing. Local / other sources keep the
+    // standard TrackListView.
+    let cover_url_yt = cover_url.clone();
+    let yt_title = album.title.clone();
+    let yt_artist = album.artist.clone();
+    // Prefer the remote album's year once resolved; fall back to the local row.
+    let yt_remote = remote_album_res.read().clone().flatten();
+    let yt_year = yt_remote
+        .as_ref()
+        .and_then(|a| a.year.clone())
+        .or_else(|| (album.year > 0).then(|| album.year.to_string()));
+    let yt_browse_id = yt_remote.as_ref().map(|a| a.browse_id.clone());
+
     rsx! {
         div { class: "absolute inset-0 flex flex-col overflow-hidden p-8",
+            if cap.discover {
+                YtAlbumDetail {
+                    config,
+                    title: yt_title,
+                    artist: yt_artist,
+                    year: yt_year,
+                    browse_id: yt_browse_id,
+                    local_cover: cover_url_yt,
+                    tracks: tracks(),
+                    on_close,
+                }
+            } else {
             TrackListView {
                 name: album_title,
                 description: album_artist,
@@ -650,6 +699,321 @@ fn AlbumDetail(
                     }).collect();
                     delete_downloads(ids, config, download_queue);
                 })),
+            }
+            }
+        }
+    }
+}
+
+/// YT-Music-style album page: a left meta column (cover, artist link, title,
+/// "Album • year", song count · duration, play / shuffle / download) beside the
+/// full track list. Shown only for the catalog remote (YT) once the album
+/// resolved; local/other sources use [`TrackListView`]. Rows reuse [`TrackRow`]
+/// so play / queue / menu / download behave exactly as everywhere else.
+#[component]
+fn YtAlbumDetail(
+    config: Signal<AppConfig>,
+    title: String,
+    artist: String,
+    year: Option<String>,
+    browse_id: Option<String>,
+    local_cover: Option<utils::CoverUrl>,
+    tracks: Vec<reader::models::Track>,
+    on_close: EventHandler<()>,
+) -> Element {
+    let mut ctrl = use_context::<hooks::use_player_controller::PlayerController>();
+    let active_source = use_context::<Signal<::server::source::ActiveSource>>();
+    let nav_ctrl = use_context::<components::NavigationController>();
+    let download_queue = use_context::<Signal<DownloadQueue>>();
+    let gens = hooks::db_reactivity::use_generations();
+    let cover_for = hooks::use_db_queries::use_cover_resolver(80);
+
+    let mut active_menu = use_signal(|| None::<reader::TrackId>);
+    let mut show_playlist_modal = use_signal(|| false);
+    let mut playlist_track = use_signal(|| None::<reader::TrackId>);
+
+    let total: u64 = tracks.iter().map(|t| t.duration).sum();
+    let dur_min = total / 60;
+    let song_count = tracks.len();
+    let artist_name = artist;
+    let artist_for_nav = artist_name.clone();
+
+    // Current track for the row highlight (id match against the live queue).
+    let current_id = ctrl.current_track().map(|t| t.id);
+    let offline_tracks = config.read().offline_tracks.clone();
+
+    // Whether every album track is downloaded for offline — drives the download
+    // button's toggle (download all ⇄ remove all).
+    let all_downloaded = !tracks.is_empty()
+        && tracks.iter().all(|t| {
+            let k = t.id.key();
+            offline_tracks
+                .get(k.as_ref())
+                .map(|p| std::path::Path::new(p).exists())
+                .unwrap_or(false)
+        });
+
+    // "Saved" = every track favorited (YT Music's album-save has no direct
+    // analog here; the closest truth is the per-track like the heart already
+    // toggles). Re-checked on any favorites bump.
+    let album_saved = {
+        let tracks = tracks.clone();
+        use_resource(move || {
+            let _ = gens.generation(Table::Favorites);
+            let src = active_source.read().clone();
+            let tracks = tracks.clone();
+            async move {
+                if tracks.is_empty() {
+                    return false;
+                }
+                for t in &tracks {
+                    if !t.is_favorite(&src).await {
+                        return false;
+                    }
+                }
+                true
+            }
+        })
+    };
+    let is_saved = album_saved.read().clone().unwrap_or(false);
+
+    let tracks_play_all = tracks.clone();
+    let tracks_download_all = tracks.clone();
+    let tracks_save = tracks.clone();
+    // Share target: the album's YT browse link when resolved, else the first
+    // track's web url so the button still does something before the fetch lands.
+    let share_url = browse_id
+        .as_ref()
+        .map(|id| format!("https://music.youtube.com/browse/{id}"))
+        .or_else(|| tracks.first().and_then(|t| active_source.peek().web_url(t)));
+
+    rsx! {
+        div { class: "w-full max-w-[1600px] mx-auto select-none flex-1 min-h-0 flex flex-col",
+            if !cfg!(target_os = "android") {
+                button {
+                    class: "flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-6 shrink-0 self-start group",
+                    onclick: move |_| on_close.call(()),
+                    i { class: "fa-solid fa-arrow-left text-sm group-hover:-translate-x-0.5 transition-transform" }
+                    span { class: "text-sm font-medium", "{i18n::t(\"back_to_albums\")}" }
+                }
+            }
+
+            div { class: "flex-1 min-h-0 flex flex-col md:flex-row gap-10 overflow-hidden",
+
+                // Left meta column.
+                div { class: "md:w-[320px] shrink-0 flex flex-col items-center md:items-start text-center md:text-left gap-5 md:pt-2",
+                    div {
+                        class: "w-full max-w-[300px] aspect-square rounded-2xl bg-stone-800 overflow-hidden relative shrink-0 shadow-2xl shadow-black/40",
+                        if let Some(url) = &local_cover {
+                            img { src: "{url.as_ref()}", class: "w-full h-full object-cover", decoding: "async" }
+                        } else {
+                            div { class: "w-full h-full flex items-center justify-center text-white/20",
+                                i { class: "fa-solid fa-compact-disc text-7xl" }
+                            }
+                        }
+                    }
+                    div { class: "flex flex-col gap-2 w-full",
+                        button {
+                            class: "text-sm font-semibold text-white/60 hover:text-white hover:underline transition-colors truncate max-w-full self-center md:self-start",
+                            onclick: move |_| nav_ctrl.navigate_to_artist(artist_for_nav.clone()),
+                            "{artist_name}"
+                        }
+                        h1 { class: "text-3xl font-bold text-white leading-[1.1] break-words", "{title}" }
+                        div { class: "text-sm text-slate-400 flex flex-wrap items-center gap-x-2 justify-center md:justify-start",
+                            if let Some(y) = year {
+                                span { class: "uppercase tracking-wide text-xs font-semibold text-white/40", "{i18n::t(\"album\")}" }
+                                span { class: "text-white/30", "•" }
+                                span { "{y}" }
+                                span { class: "text-white/30", "•" }
+                            }
+                            span { "{i18n::t_with(\"showcase_song_count\", &[(\"count\", song_count.to_string())])}" }
+                            span { class: "text-white/30", "•" }
+                            span { "{dur_min} {i18n::t(\"min\")}" }
+                        }
+                    }
+                    div { class: "flex items-center gap-3 mt-1",
+                        // Download all / remove downloads.
+                        button {
+                            class: "w-11 h-11 rounded-full border border-white/15 flex items-center justify-center text-slate-300 hover:text-white hover:border-white/30 transition-colors disabled:opacity-40",
+                            title: if all_downloaded { "Remove download".to_string() } else { "Download".to_string() },
+                            disabled: download_queue.read().is_active(),
+                            onclick: move |_| {
+                                if all_downloaded {
+                                    let ids: Vec<String> = tracks_download_all.iter().filter_map(|t| {
+                                        let k = t.id.key();
+                                        (!k.is_empty()).then(|| k.into_owned())
+                                    }).collect();
+                                    delete_downloads(ids, config, download_queue);
+                                } else {
+                                    let reqs: Vec<(String, String, String)> = tracks_download_all.iter().filter_map(|t| {
+                                        let k = t.id.key();
+                                        (!k.is_empty()).then(|| (k.into_owned(), t.title.clone(), t.artist.clone()))
+                                    }).collect();
+                                    queue_downloads(reqs, config, download_queue);
+                                }
+                            },
+                            i { class: if all_downloaded { "fa-solid fa-trash" } else { "fa-solid fa-download" } }
+                        }
+                        // Save (favorite all tracks).
+                        button {
+                            class: format!("w-11 h-11 rounded-full border flex items-center justify-center transition-colors {}", if is_saved { "text-indigo-400 border-indigo-400/40 bg-indigo-500/10" } else { "text-slate-300 border-white/15 hover:text-white hover:border-white/30" }),
+                            title: if is_saved { "Saved".to_string() } else { i18n::t("save").to_string() },
+                            onclick: move |_| {
+                                let want = !is_saved;
+                                let tracks = tracks_save.clone();
+                                let src = active_source.peek().clone();
+                                spawn(async move {
+                                    for t in &tracks {
+                                        if want {
+                                            let _ = src.upsert_tracks(std::slice::from_ref(t)).await;
+                                        }
+                                        let _ = t.set_favorite(&src, want).await;
+                                    }
+                                    gens.bump(Table::Favorites);
+                                    gens.bump(Table::Tracks);
+                                    if src.capabilities().sync {
+                                        hooks::use_sync_task::nudge();
+                                    }
+                                });
+                            },
+                            i { class: if is_saved { "fa-solid fa-bookmark" } else { "fa-regular fa-bookmark" } }
+                        }
+                        // Play (primary).
+                        button {
+                            class: "w-16 h-16 rounded-full bg-indigo-500 hover:bg-indigo-400 text-black flex items-center justify-center transition-transform hover:scale-105 shadow-lg shadow-black/30",
+                            title: i18n::t("play").to_string(),
+                            onclick: move |_| {
+                                if *ctrl.shuffle.peek() {
+                                    ctrl.play_queue_shuffled(tracks_play_all.clone());
+                                } else {
+                                    ctrl.play_queue_linear(tracks_play_all.clone());
+                                }
+                            },
+                            i { class: "fa-solid fa-play text-2xl ml-1" }
+                        }
+                        // Shuffle.
+                        button {
+                            class: format!("w-11 h-11 rounded-full border flex items-center justify-center transition-colors {}", if *ctrl.shuffle.read() { "text-white bg-white/10 border-white/30" } else { "text-slate-300 border-white/15 hover:text-white hover:border-white/30" }),
+                            title: i18n::t("shuffle").to_string(),
+                            onclick: move |_| ctrl.toggle_shuffle(),
+                            i { class: "fa-solid fa-shuffle" }
+                        }
+                        // Share.
+                        if let Some(url) = share_url {
+                            button {
+                                class: "w-11 h-11 rounded-full border border-white/15 flex items-center justify-center text-slate-300 hover:text-white hover:border-white/30 transition-colors",
+                                title: "Share".to_string(),
+                                onclick: move |_| copy_album_link(url.clone()),
+                                i { class: "fa-solid fa-arrow-up-from-bracket" }
+                            }
+                        }
+                    }
+                }
+
+                // Track list.
+                div { class: "flex-1 min-h-0 overflow-y-auto pb-24",
+                    for (idx, track) in tracks.iter().cloned().enumerate() {
+                        {
+                            let cover_url = cover_for(&track);
+                            let is_menu_open = active_menu.read().as_ref() == Some(&track.id);
+                            let is_current = current_id.as_ref() == Some(&track.id);
+                            let key = track.id.key().into_owned();
+                            let is_downloaded = offline_tracks
+                                .get(&key)
+                                .map(|p| std::path::Path::new(p).exists())
+                                .unwrap_or(false);
+                            let row_tracks = tracks.clone();
+                            let menu_id = track.id.clone();
+                            let pl_id = track.id.clone();
+                            let dl_track = track.clone();
+                            let q_track = track.clone();
+                            rsx! {
+                                components::track_row::TrackRow {
+                                    key: "{track.id.uid()}",
+                                    track: track.clone(),
+                                    cover_url,
+                                    is_album: true,
+                                    hide_delete: true,
+                                    row_num: Some(idx + 1),
+                                    is_menu_open,
+                                    is_currently_playing: is_current,
+                                    is_downloaded,
+                                    on_start_radio: components::track_row::radio_handler(track.clone()),
+                                    on_play: move |_| {
+                                        ctrl.queue.set(row_tracks.clone());
+                                        ctrl.play_track(idx);
+                                    },
+                                    on_queue: Some(EventHandler::new(move |_| {
+                                        ctrl.add_to_queue(vec![q_track.clone()]);
+                                        active_menu.set(None);
+                                    })),
+                                    on_click_menu: move |_| {
+                                        let open = active_menu.read().as_ref() == Some(&menu_id);
+                                        active_menu.set((!open).then(|| menu_id.clone()));
+                                    },
+                                    on_close_menu: move |_| active_menu.set(None),
+                                    on_add_to_playlist: move |_| {
+                                        playlist_track.set(Some(pl_id.clone()));
+                                        show_playlist_modal.set(true);
+                                        active_menu.set(None);
+                                    },
+                                    on_delete: move |_| {},
+                                    on_download: Some(EventHandler::new(move |_| {
+                                        let k = dl_track.id.key();
+                                        if k.is_empty() {
+                                            return;
+                                        }
+                                        let k = k.as_ref();
+                                        let downloaded = config.read().offline_tracks.get(k)
+                                            .map(|p| std::path::Path::new(p).exists())
+                                            .unwrap_or(false);
+                                        if downloaded {
+                                            delete_downloads(vec![k.to_string()], config, download_queue);
+                                        } else {
+                                            queue_downloads(vec![(k.to_string(), dl_track.title.clone(), dl_track.artist.clone())], config, download_queue);
+                                        }
+                                        active_menu.set(None);
+                                    })),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if *show_playlist_modal.read() {
+                PlaylistModal {
+                    on_close: move |_| {
+                        show_playlist_modal.set(false);
+                        playlist_track.set(None);
+                    },
+                    on_add_to_playlist: move |playlist_id: String| {
+                        if let Some(id) = playlist_track.read().clone() {
+                            let refs = vec![id.key().into_owned()];
+                            let s = active_source.peek().clone();
+                            spawn(async move {
+                                if s.add_to_playlist(&playlist_id, &refs).await.is_ok() {
+                                    gens.bump(Table::Playlists);
+                                }
+                            });
+                        }
+                        show_playlist_modal.set(false);
+                        playlist_track.set(None);
+                    },
+                    on_create_playlist: move |name: String| {
+                        if let Some(id) = playlist_track.read().clone() {
+                            let refs = vec![id.key().into_owned()];
+                            let s = active_source.peek().clone();
+                            spawn(async move {
+                                if s.create_playlist(&name, &refs).await.is_ok() {
+                                    gens.bump(Table::Playlists);
+                                }
+                            });
+                        }
+                        show_playlist_modal.set(false);
+                        playlist_track.set(None);
+                    },
+                }
             }
         }
     }

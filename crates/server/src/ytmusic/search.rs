@@ -787,9 +787,7 @@ pub fn synth_album_parts(id: &str) -> Option<(String, String)> {
     }
     let bytes = hex::decode(token).ok()?;
     let decoded = String::from_utf8(bytes).ok()?;
-    let (album, artist) = decoded
-        .split_once('|')
-        .unwrap_or((decoded.as_str(), ""));
+    let (album, artist) = decoded.split_once('|').unwrap_or((decoded.as_str(), ""));
     (!album.is_empty()).then(|| (album.to_string(), artist.to_string()))
 }
 

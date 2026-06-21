@@ -242,7 +242,11 @@ pub fn Artist(
                         // instead of re-searching YT.
                         if !url.is_empty() {
                             let _ = source
-                                .set_artist_image(&normalize_artist_key(&name), "server", Some(&url))
+                                .set_artist_image(
+                                    &normalize_artist_key(&name),
+                                    "server",
+                                    Some(&url),
+                                )
                                 .await;
                         }
                         fetched_artist_images.write().insert(name, url);

@@ -2303,13 +2303,6 @@
       }
     }
   }
-  .group-hover\:inline-block {
-    &:is(:where(.group):hover *) {
-      @media (hover: hover) {
-        display: inline-block;
-      }
-    }
-  }
   .group-hover\:h-4 {
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
@@ -2851,11 +2844,6 @@
   .active\:cursor-grabbing {
     &:active {
       cursor: grabbing;
-    }
-  }
-  .disabled\:cursor-default {
-    &:disabled {
-      cursor: default;
     }
   }
   .disabled\:cursor-not-allowed {

@@ -387,11 +387,63 @@ fn AlbumDetail(
     let album_res = use_album(source, album_id_memo);
     let albums_res = use_albums(source);
 
+    // Discover albums are opened by their YT browse id (MPRE…) and aren't in the
+    // local DB until saved. When the DB has no row for the id, fetch the album
+    // straight from the catalog remote by that browse id so every searched /
+    // discovered album renders (header + full track list) instead of "not found".
+    let direct_remote_res: Resource<Option<::server::ytmusic::discover::YtAlbum>> = {
+        let active_source = active_source;
+        use_resource(move || {
+            let want = caps().discover && !*is_offline.read();
+            let db_has = album_res.read().clone().flatten().is_some();
+            let id = album_id_memo();
+            let src = active_source.peek().clone();
+            async move {
+                if !want || db_has || id.trim().is_empty() {
+                    return None;
+                }
+                src.fetch_album(&id)
+                    .await
+                    .ok()
+                    .filter(|a| !a.tracks.is_empty())
+            }
+        })
+    };
+
     let album_loading = album_res.read().is_none();
     let album = match album_res.read().clone().flatten() {
         Some(a) => a,
         None => {
-            if album_loading {
+            // Not saved locally — render the remote album directly if it resolved.
+            if let Some(remote) = direct_remote_res.read().clone().flatten() {
+                let mut tracks = remote.tracks;
+                tracks.sort_by(|a, b| {
+                    a.disc_number
+                        .unwrap_or(1)
+                        .cmp(&b.disc_number.unwrap_or(1))
+                        .then_with(|| {
+                            a.track_number
+                                .unwrap_or(0)
+                                .cmp(&b.track_number.unwrap_or(0))
+                        })
+                });
+                return rsx! {
+                    div { class: "absolute inset-0 flex flex-col overflow-hidden p-8",
+                        YtAlbumDetail {
+                            config,
+                            title: remote.title,
+                            artist: remote.artist.unwrap_or_default(),
+                            year: remote.year,
+                            browse_id: Some(remote.browse_id),
+                            local_cover: remote.thumbnail.map(utils::cover_url_from_string),
+                            tracks,
+                            on_close,
+                        }
+                    }
+                };
+            }
+            // Still resolving (DB miss not yet confirmed, or remote in flight).
+            if album_loading || direct_remote_res.read().is_none() {
                 return rsx! { div {} };
             }
             return rsx! { div { "{i18n::t(\"album_not_found\")}" } };

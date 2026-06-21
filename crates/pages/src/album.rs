@@ -465,9 +465,7 @@ fn AlbumDetail(
 
         // Full album from the catalog remote (already in album order). Used
         // whenever it resolved; the locally-saved subset is the fallback.
-        if !offline
-            && let Some(remote) = remote_album_res.read().clone().flatten()
-        {
+        if !offline && let Some(remote) = remote_album_res.read().clone().flatten() {
             let mut remote = remote.tracks;
             remote.sort_by(|a, b| {
                 a.disc_number

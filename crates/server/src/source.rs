@@ -366,6 +366,18 @@ pub trait MediaSource: Send + Sync {
         Err(SourceError::unsupported("artist channel"))
     }
 
+    /// Resolve a saved album's title + artist to a remote album browse id, so
+    /// the album page can fetch the album's full track list (the local library
+    /// stores YT albums by hash, with no browse id). Default unsupported; only
+    /// catalog remotes (YT) override.
+    async fn resolve_album_browse_id(
+        &self,
+        _album: &str,
+        _artist: &str,
+    ) -> Result<Option<String>, SourceError> {
+        Err(SourceError::unsupported("album browse id"))
+    }
+
     /// A remote artist profile (banner, top songs, albums, related) by channel
     /// id. Default unsupported; only catalog remotes (YT) override.
     async fn fetch_artist(
@@ -1866,6 +1878,17 @@ impl MediaSource for YtSource {
     async fn resolve_artist_channel_id(&self, query: &str) -> Result<Option<String>, SourceError> {
         self.client
             .resolve_artist_channel_id(query)
+            .await
+            .map_err(SourceError::from)
+    }
+
+    async fn resolve_album_browse_id(
+        &self,
+        album: &str,
+        artist: &str,
+    ) -> Result<Option<String>, SourceError> {
+        self.client
+            .resolve_album_browse_id(album, artist)
             .await
             .map_err(SourceError::from)
     }

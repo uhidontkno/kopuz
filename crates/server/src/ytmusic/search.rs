@@ -12,6 +12,10 @@ const VIDEOS_FILTER: &str = "EgWKAQIQAWoMEAMQBBAJEAoQDhAV";
 // to musicResponsiveListItemRenderer rows whose nav endpoint browseId
 // begins with `UC…`, exactly what we need for name → channel resolve.
 const ARTISTS_FILTER: &str = "EgWKAQIgAWoMEAMQBBAJEAoQDhAV";
+// `params` value for the "Albums" tab. Restricts hits to album rows whose
+// nav endpoint browseId begins with `MPRE…`, what we need to resolve a
+// title+artist back to its album browse id (see `resolve_album_browse_id`).
+const ALBUMS_FILTER: &str = "EgWKAQIYAWoMEAMQBBAJEAoQDhAV";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MusicVideoType {
@@ -107,6 +111,55 @@ pub async fn resolve_artist_channel_id(
     let http = super::innertube::http_client();
     let resp = do_search_raw(http, query, Some(ARTISTS_FILTER), cookies).await?;
     Ok(walk_first_artist_browse_id(&resp))
+}
+
+/// Resolve an album title + artist to its YT Music album browse id
+/// (`MPRE…`). The local library stores YT albums under a title+artist hash
+/// with no browse id, so the album page resolves it on demand to fetch the
+/// album's full track list (see [`fetch_album`](super::discover::fetch_album)).
+/// Searches the Albums tab for "<album> <artist>" and takes the first
+/// `MPRE…` browseId — the top-ranked match. Returns None if nothing matched.
+#[tracing::instrument(name = "yt.resolve_album", skip(cookies), fields(album = %album))]
+pub async fn resolve_album_browse_id(
+    album: &str,
+    artist: &str,
+    cookies: Option<&str>,
+) -> Result<Option<String>, String> {
+    if album.trim().is_empty() {
+        return Ok(None);
+    }
+    let query = if artist.trim().is_empty() {
+        album.to_string()
+    } else {
+        format!("{album} {artist}")
+    };
+    let http = super::innertube::http_client();
+    let resp = do_search_raw(http, &query, Some(ALBUMS_FILTER), cookies).await?;
+    Ok(walk_first_album_browse_id(&resp))
+}
+
+/// Recursively walk the JSON for the first browseEndpoint pointing at an
+/// `MPRE…` album. The albums filter restricts results to album rows so the
+/// first hit is the top-ranked match.
+fn walk_first_album_browse_id(v: &Value) -> Option<String> {
+    match v {
+        Value::Object(map) => {
+            if let Some(ep) = map.get("browseEndpoint")
+                && let Some(bid) = ep.get("browseId").and_then(|x| x.as_str())
+                && bid.starts_with("MPRE")
+            {
+                return Some(bid.to_string());
+            }
+            for child in map.values() {
+                if let Some(found) = walk_first_album_browse_id(child) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        Value::Array(arr) => arr.iter().find_map(walk_first_album_browse_id),
+        _ => None,
+    }
 }
 
 /// Recursively walk the JSON for the first browseEndpoint pointing at

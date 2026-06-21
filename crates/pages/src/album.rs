@@ -410,9 +410,57 @@ fn AlbumDetail(
         })
     };
 
+    // Catalog remotes (YT) store albums under a title+artist hash with no
+    // browse id, so the library only ever holds the few tracks the user saved —
+    // an album page would show 1 of 18 songs. Resolve the album's browse id on
+    // demand and fetch its full track list, the way YT Music shows it. Empty for
+    // local/other sources (gated on `discover`) and while offline.
+    let remote_album_res = {
+        let active_source = active_source;
+        use_resource(move || {
+            let want = caps().discover && !*is_offline.read();
+            let album = album_res.read().clone().flatten();
+            let src = active_source.peek().clone();
+            async move {
+                let Some(album) = album else {
+                    return Vec::new();
+                };
+                if !want || album.title.trim().is_empty() {
+                    return Vec::new();
+                }
+                let Ok(Some(browse_id)) =
+                    src.resolve_album_browse_id(&album.title, &album.artist).await
+                else {
+                    return Vec::new();
+                };
+                src.fetch_album_tracks(&browse_id).await.unwrap_or_default()
+            }
+        })
+    };
+
     let tracks = use_memo(move || {
         let offline = caps().downloads && *is_offline.read();
         let conf = config.read();
+
+        // Full album from the catalog remote (already in album order). Used
+        // whenever it resolved; the locally-saved subset is the fallback.
+        if !offline {
+            let mut remote = remote_album_res.read().clone().unwrap_or_default();
+            if !remote.is_empty() {
+                remote.sort_by(|a, b| {
+                    a.disc_number
+                        .unwrap_or(1)
+                        .cmp(&b.disc_number.unwrap_or(1))
+                        .then_with(|| {
+                            a.track_number
+                                .unwrap_or(0)
+                                .cmp(&b.track_number.unwrap_or(0))
+                        })
+                });
+                return remote;
+            }
+        }
+
         let mut tracks: Vec<reader::models::Track> = tracks_res
             .read()
             .clone()

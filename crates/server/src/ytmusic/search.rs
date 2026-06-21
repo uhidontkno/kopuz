@@ -162,6 +162,41 @@ fn walk_first_album_browse_id(v: &Value) -> Option<String> {
     }
 }
 
+/// The top artist result's avatar URL for `name` from the YT Music "Artists"
+/// tab. Powers the Artists grid so its circular photos are the real YT artist
+/// images and nothing else. Returns None when no artist row matched.
+#[tracing::instrument(name = "yt.artist_image", skip(cookies), fields(name = %name))]
+pub async fn resolve_artist_image(
+    name: &str,
+    cookies: Option<&str>,
+) -> Result<Option<String>, String> {
+    if name.trim().is_empty() {
+        return Ok(None);
+    }
+    let http = super::innertube::http_client();
+    let resp = do_search_raw(http, name, Some(ARTISTS_FILTER), cookies).await?;
+    Ok(walk_first_artist_thumbnail(&resp))
+}
+
+/// First artist row (`musicResponsiveListItemRenderer` that links a `UC…`
+/// channel) → its best thumbnail. The artists filter keeps results to artist
+/// rows so the first such hit is the top-ranked match.
+fn walk_first_artist_thumbnail(v: &Value) -> Option<String> {
+    match v {
+        Value::Object(map) => {
+            if let Some(row) = map.get("musicResponsiveListItemRenderer")
+                && walk_first_artist_browse_id(row).is_some()
+                && let Some(thumb) = best_thumbnail(row)
+            {
+                return Some(thumb);
+            }
+            map.values().find_map(walk_first_artist_thumbnail)
+        }
+        Value::Array(arr) => arr.iter().find_map(walk_first_artist_thumbnail),
+        _ => None,
+    }
+}
+
 /// Recursively walk the JSON for the first browseEndpoint pointing at
 /// a `UC…` channel. The artists filter restricts results to artist
 /// rows so the first hit is the top-ranked match.

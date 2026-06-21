@@ -80,6 +80,12 @@ impl YouTubeMusicClient {
         search::resolve_artist_channel_id(query, self.cookies.as_deref()).await
     }
 
+    /// Top YT Music artist-search avatar for `name` — the Artists grid uses this
+    /// so its photos are real YT artist images.
+    pub async fn resolve_artist_image(&self, name: &str) -> Result<Option<String>, String> {
+        search::resolve_artist_image(name, self.cookies.as_deref()).await
+    }
+
     /// Resolve a saved album (title + artist) back to its YT album browse id
     /// (`MPRE…`). Library YT albums carry no browse id, so the album page calls
     /// this on demand before [`fetch_album_tracks`](Self::fetch_album_tracks)

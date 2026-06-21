@@ -442,6 +442,12 @@ pub trait MediaSource: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Resolve a single artist's photo URL by name. Default None; the catalog
+    /// remote (YT) implements it so the Artists grid can show real YT photos.
+    async fn fetch_artist_image(&self, _name: &str) -> Result<Option<String>, SourceError> {
+        Ok(None)
+    }
+
     /// One page of favorites — for [`FavoritesSync::Paginated`] sources (YT). The
     /// caller passes `None` then each returned cursor; default is a single empty
     /// page (instant sources use [`fetch_favorites`] instead).
@@ -1918,6 +1924,13 @@ impl MediaSource for YtSource {
     ) -> Result<crate::ytmusic::discover::YtArtist, SourceError> {
         self.client
             .fetch_artist(channel_id)
+            .await
+            .map_err(SourceError::from)
+    }
+
+    async fn fetch_artist_image(&self, name: &str) -> Result<Option<String>, SourceError> {
+        self.client
+            .resolve_artist_image(name)
             .await
             .map_err(SourceError::from)
     }

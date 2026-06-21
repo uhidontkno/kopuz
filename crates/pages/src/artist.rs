@@ -123,7 +123,9 @@ pub fn Artist(
     // image resolution reads. Gated on `sync` so local never runs it; YT yields
     // nothing. The per-service fetch lives behind the facade.
     use_effect(move || {
-        if !caps().sync {
+        // YT resolves its avatars per-artist below; this server path would yield
+        // nothing for it anyway.
+        if !caps().sync || caps().discover {
             return;
         }
         if config.read().artist_photo_source != ArtistPhotoSource::ArtistPhoto {
@@ -153,6 +155,68 @@ pub fn Artist(
         );
     });
 
+    // YT Music: the Artists grid shows real YT artist photos and nothing else.
+    // There's no bulk endpoint, so resolve each library artist's avatar from the
+    // YT "Artists" search, a few in flight at a time, writing results in as they
+    // land so the grid fills progressively. Keyed by display name (the grid reads
+    // `fetched.get(&display)`).
+    use_effect(move || {
+        if !caps().discover {
+            return;
+        }
+        if *images_fetch_done.read() || *is_fetching_images.read() {
+            return;
+        }
+        let albums = albums_res.read().clone().unwrap_or_default();
+        let sample = sample_tracks_res.read().clone().unwrap_or_default();
+        if albums.is_empty() && sample.is_empty() {
+            // Library not loaded yet — wait for a real artist set.
+            return;
+        }
+        let mut names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for album in &albums {
+            if !album.artist.trim().is_empty() {
+                names.insert(album.artist.clone());
+            }
+        }
+        for track in &sample {
+            for artist in &track.artists {
+                if !artist.trim().is_empty() {
+                    names.insert(artist.clone());
+                }
+            }
+        }
+        if names.is_empty() {
+            return;
+        }
+        // Mark done up front so the effect doesn't respawn as the workers write
+        // partial results back into the map.
+        is_fetching_images.set(true);
+        images_fetch_done.set(true);
+
+        let names: Vec<String> = names.into_iter().collect();
+        let workers = 6usize;
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(names.into_iter()));
+        for _ in 0..workers {
+            let source = active_source.peek().clone();
+            let shared = shared.clone();
+            spawn(
+                async move {
+                    loop {
+                        let Some(name) = shared.lock().ok().and_then(|mut it| it.next()) else {
+                            break;
+                        };
+                        if let Ok(Some(url)) = source.fetch_artist_image(&name).await {
+                            fetched_artist_images.write().insert(name, url);
+                        }
+                    }
+                }
+                .instrument(tracing::info_span!("artist.fetch_yt_images")),
+            );
+        }
+        is_fetching_images.set(false);
+    });
+
     // The artist grid: every artist with a resolved avatar. Avatar precedence is
     // source-agnostic — custom photo, then (when "artist photo" is on) a fetched
     // remote / local-DB photo, then the album cover via the source cover seam.
@@ -162,7 +226,10 @@ pub fn Artist(
         let (overrides, photos) = artist_images_res.read().clone().unwrap_or_default();
         let fetched = fetched_artist_images.read();
         let conf = config.read();
-        let use_photo = conf.artist_photo_source == ArtistPhotoSource::ArtistPhoto;
+        // YT Music: photos are exactly the YT artist avatars — force the photo
+        // path on and drop the album-cover fallback (handled per-artist below).
+        let is_yt = caps().discover;
+        let use_photo = is_yt || conf.artist_photo_source == ArtistPhotoSource::ArtistPhoto;
         let offline = caps().downloads && *is_offline.read();
 
         // norm → (display name, first album cover-path).
@@ -200,6 +267,9 @@ pub fn Artist(
             .into_iter()
             .filter(|(_, (display, _))| !offline || downloaded.contains(&display.to_lowercase()))
             .map(|(norm, (display, album_cover))| {
+                // YT: no album-cover fallback — only the resolved YT photo (None
+                // until it lands → placeholder icon, never an album cover).
+                let album_cover = if is_yt { None } else { album_cover };
                 let cover = ::server::cover::artist(
                     &conf,
                     overrides.get(&norm).map(|p| p.as_path()),

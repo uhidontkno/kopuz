@@ -11,5 +11,6 @@ pub mod source;
 pub mod subsonic;
 pub mod sync;
 pub mod ytmusic;
+pub mod applemusic;
 
 pub use download_queue::{DownloadItem, DownloadProgress, DownloadQueue, DownloadStatus};

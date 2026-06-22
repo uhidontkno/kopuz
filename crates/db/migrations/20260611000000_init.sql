@@ -20,7 +20,7 @@ CREATE TABLE servers (
     id                TEXT PRIMARY KEY NOT NULL,
     name              TEXT NOT NULL,
     url               TEXT NOT NULL,
-    service           TEXT NOT NULL,            -- 'Jellyfin' | 'Subsonic' | 'Custom' | 'YtMusic'
+    service           TEXT NOT NULL,            -- 'Jellyfin' | 'Subsonic' | 'Custom' | 'YtMusic' | 'AppleMusic'
     access_token      TEXT,                      -- creds live HERE (Jellyfin/Subsonic token, YT cookie jar)
     user_id           TEXT,
     yt_browser        TEXT,

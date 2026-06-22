@@ -27,6 +27,8 @@ reader = { workspace = true }
 db = { workspace = true }
 utils = { workspace = true }
 async-trait = "0.1"
+urlencoding = "2.1"
+regex = "1"
 
 [[example]]
 name = "duration_probe"

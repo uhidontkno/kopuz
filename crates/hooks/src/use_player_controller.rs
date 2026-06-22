@@ -581,6 +581,12 @@ impl PlayerController {
                                 format!("__PENDING:{id}"),
                                 track.cover.clone().unwrap_or_default(),
                             ),
+                            // Apple Music resolves stream async; cover is the
+                            // plain artwork URL in `track.cover`.
+                            MusicService::AppleMusic => (
+                                format!("__PENDING:{id}"),
+                                track.cover.clone().unwrap_or_default(),
+                            ),
                         })
                     }
                 } {

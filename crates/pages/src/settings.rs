@@ -194,6 +194,10 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
     // Windows (browser sign-in unsupported there — App-Bound Encryption), so the
     // popup opens on the only working method.
     let yt_anonymous = use_signal(|| cfg!(target_os = "windows"));
+    let apple_music_storefront = use_signal(|| "us".to_string());
+    let apple_music_language = use_signal(|| "en".to_string());
+    let apple_music_manual_token = use_signal(String::new);
+    let apple_music_use_manual = use_signal(|| false);
 
     let mut username = use_signal(String::new);
     let mut password = use_signal(String::new);
@@ -351,6 +355,51 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
         });
     };
 
+    let applemusic_auto_login = move || {
+        let (browser, server_id) = {
+            let cfg = config.peek();
+            let srv = cfg.server.as_ref();
+            (
+                srv.and_then(|s| s.yt_browser).unwrap_or(*yt_browser.peek()),
+                srv.and_then(|s| s.id.clone()).unwrap_or_default(),
+            )
+        };
+        let mut report = move |msg: String| {
+            error.set(Some(msg.clone()));
+            ctrl.playback_error.set(Some(msg));
+        };
+        spawn(async move {
+            let token = match ::server::applemusic::signin::launch_signin_and_extract(
+                browser,
+                &server_id,
+                std::time::Duration::from_secs(300),
+            )
+            .await
+            {
+                Ok(t) => t,
+                Err(e) => {
+                    report(format!("Apple Music sign-in failed ({browser}): {e}"));
+                    return;
+                }
+            };
+            {
+                let mut cfg = config.write();
+                let saved_id = cfg.server.as_ref().and_then(|s| s.id.clone());
+                if let Some(srv) = cfg.server.as_mut() {
+                    srv.access_token = Some(token);
+                    srv.user_id = Some("me".to_string());
+                    srv.yt_browser = Some(browser);
+                }
+                if let Some(id) = saved_id
+                    && let Some(saved) = cfg.servers.iter_mut().find(|s| s.id == id)
+                {
+                    saved.yt_browser = Some(browser);
+                }
+            }
+            error.set(None);
+        });
+    };
+
     let handle_add_server = move |_| {
         let selected_service = server_service();
         let is_ytmusic = selected_service == MusicService::YtMusic;
@@ -381,6 +430,8 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                     "https://music.youtube.com".to_string()
                 } else if is_soundcloud {
                     "https://soundcloud.com".to_string()
+                } else if selected_service == MusicService::AppleMusic {
+                    "https://music.apple.com".to_string()
                 } else {
                     url_input
                 };
@@ -399,6 +450,16 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                     // only".
                     new_server.access_token = Some(String::new());
                 }
+                // Apple Music: set storefront, language, and optionally manual token.
+                if selected_service == MusicService::AppleMusic {
+                    new_server.apple_music_storefront = apple_music_storefront();
+                    new_server.apple_music_language = apple_music_language();
+                    let manual = apple_music_manual_token();
+                    if !manual.is_empty() {
+                        new_server.access_token = Some(manual);
+                        new_server.user_id = Some("me".to_string());
+                    }
+                }
                 // Persist the chosen browser on the active server too (not just the
                 // saved-list entry), so the sign-in flow knows which browser to use.
                 // Applies to every browser-sign-in backend (YT, SoundCloud).
@@ -411,6 +472,8 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                     service: new_server.service,
                     yt_browser: (is_browser_signin && !is_anon).then(|| *yt_browser.peek()),
                     yt_anonymous: is_anon,
+                    apple_music_storefront: new_server.apple_music_storefront.clone(),
+                    apple_music_language: new_server.apple_music_language.clone(),
                 };
                 {
                     let mut cfg = config.write();
@@ -432,6 +495,10 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                     ytmusic_auto_login();
                 } else if is_soundcloud {
                     soundcloud_auto_login();
+                } else if selected_service == MusicService::AppleMusic
+                    && !apple_music_use_manual()
+                {
+                    applemusic_auto_login();
                 } else if !is_browser_signin {
                     show_login.set(true);
                 }
@@ -446,13 +513,15 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
     let handle_switch_server = move |id: String| {
         let db = db_for_switch.clone();
         spawn(async move {
-            let Some(is_ytmusic) = config
+            let saved = config
                 .peek()
                 .find_saved_server(&id)
-                .map(|s| s.service == MusicService::YtMusic)
-            else {
+                .cloned();
+            let Some(saved) = saved else {
                 return;
             };
+            let is_ytmusic = saved.service == MusicService::YtMusic;
+            let is_applemusic = saved.service == MusicService::AppleMusic;
             // Shared switch (sidebar + Settings): loads creds and sets the active
             // source + server snapshot together. `usable` ⇒ has stored creds or is
             // anonymous YT; otherwise launch the right sign-in flow.
@@ -462,6 +531,8 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
             if !usable {
                 if is_ytmusic {
                     ytmusic_auto_login();
+                } else if is_applemusic {
+                    applemusic_auto_login();
                 } else {
                     show_login.set(true);
                 }
@@ -479,6 +550,9 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
             }
             Some(MusicService::SoundCloud) => {
                 let _ = ::server::soundcloud::signin::delete_profile(&id);
+            }
+            Some(MusicService::AppleMusic) => {
+                let _ = ::server::applemusic::signin::delete_profile(&id);
             }
             _ => {}
         }
@@ -659,16 +733,21 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                                         on_delete: handle_delete_saved,
                                         on_switch: handle_switch_server,
                                         on_login: move |_| {
-                                            let is_ytmusic = config
+                                            let service = config
                                                 .read()
                                                 .server
                                                 .as_ref()
-                                                .map(|s| s.service == MusicService::YtMusic)
-                                                .unwrap_or(false);
-                                            if is_ytmusic {
-                                                ytmusic_auto_login();
-                                            } else {
-                                                show_login.set(true);
+                                                .map(|s| s.service);
+                                            match service {
+                                                Some(MusicService::YtMusic) => {
+                                                    ytmusic_auto_login();
+                                                }
+                                                Some(MusicService::AppleMusic) => {
+                                                    applemusic_auto_login();
+                                                }
+                                                _ => {
+                                                    show_login.set(true);
+                                                }
                                             }
                                         },
                                     }
@@ -1136,6 +1215,10 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                         server_service,
                         yt_browser,
                         yt_anonymous,
+                        apple_music_storefront,
+                        apple_music_language,
+                        apple_music_manual_token,
+                        apple_music_use_manual,
                         error,
                         on_close: move |_| show_add_server.set(false),
                         on_save: handle_add_server

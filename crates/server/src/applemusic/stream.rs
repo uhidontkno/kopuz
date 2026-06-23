@@ -31,6 +31,7 @@ pub async fn get_web_playback(
         .header("User-Agent", USER_AGENT)
         .header("Referer", "https://music.apple.com/")
         .header("Authorization", format!("Bearer {bearer_token}"))
+        .header("x-apple-music-user-token", media_user_token)
         .header("Cookie", format!("media-user-token={media_user_token}"))
         .json(&body)
         .send()
@@ -88,9 +89,13 @@ pub async fn get_web_playback(
         .and_then(|k| k.uri.as_deref())
         .ok_or("no KEY in media playlist")?;
 
+    tracing::info!("am.webplayback: raw KEY URI = {key_uri}");
+
     let (uri_prefix, kid_base64) = key_uri
         .split_once(',')
         .ok_or("KEY URI not in expected format 'prefix,kid'")?;
+
+    tracing::info!("am.webplayback: uri_prefix = {uri_prefix}, kid = {kid_base64}");
 
     tracing::info!("am.webplayback: KID extracted, uri_prefix present");
 
@@ -155,6 +160,9 @@ async fn get_content_key(
         "user-initiated": true,
     });
 
+    tracing::info!("am.license: sending envelope (challenge_b64_len={}, uri={})", envelope["challenge"].as_str().unwrap_or("").len(), envelope["uri"].as_str().unwrap_or(""));
+    tracing::debug!("am.license: full envelope: {}", serde_json::to_string(&envelope).unwrap_or_default());
+
     let client = reqwest::Client::new();
     let resp = client
         .post(LICENSE_SERVER_URL)
@@ -163,6 +171,7 @@ async fn get_content_key(
         .header("User-Agent", USER_AGENT)
         .header("Referer", "https://music.apple.com/")
         .header("Authorization", format!("Bearer {bearer_token}"))
+        .header("x-apple-music-user-token", media_user_token)
         .header("Cookie", format!("media-user-token={media_user_token}"))
         .json(&envelope)
         .send()
@@ -388,6 +397,11 @@ pub async fn resolve_and_decrypt(adam_id: &str, media_user_token: &str) -> Resul
     let cdm = Cdm::new_default(&init_data)?;
     let license_request = cdm.get_license_request()?;
     tracing::info!("am.stream: license request generated ({} bytes)", license_request.len());
+    tracing::debug!("am.stream: license request first 50 bytes: {}", license_request[..license_request.len().min(50)].iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" "));
+    tracing::info!("am.stream: KID (b64) = {}, uri_prefix = {}", playback.kid_base64, playback.uri_prefix);
+    tracing::debug!("am.stream: kid decoded len = {}", STANDARD.decode(&playback.kid_base64).unwrap_or_default().len());
+    tracing::debug!("am.stream: pssh (b64) = {pssh}");
+    tracing::debug!("am.stream: pssh decoded len = {}", init_data.len());
 
     tracing::info!("am.stream: exchanging license with Apple");
 
@@ -410,6 +424,7 @@ pub async fn resolve_and_decrypt(adam_id: &str, media_user_token: &str) -> Resul
     let encrypted_resp = client
         .get(&playback.file_url)
         .header("User-Agent", USER_AGENT)
+        .header("x-apple-music-user-token", media_user_token)
         .header("Cookie", format!("media-user-token={media_user_token}"))
         .send()
         .await

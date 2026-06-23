@@ -369,7 +369,7 @@ impl PlayerController {
             let is_radio_item = scheme.as_str() == "radio";
             let is_server_item = matches!(
                 scheme.as_str(),
-                "jellyfin" | "subsonic" | "custom" | "ytmusic"
+                "jellyfin" | "subsonic" | "custom" | "ytmusic" | "soundcloud" | "applemusic"
             );
 
             if is_server_item || is_radio_item {

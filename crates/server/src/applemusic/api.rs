@@ -297,7 +297,7 @@ impl AppleMusicApi {
     pub async fn get_library_songs(&self) -> Result<Vec<LibrarySongResource>, String> {
         tracing::debug!("am.get_library_songs: starting");
         self.library_page(&format!(
-            "/v1/me/library/songs?l={}&limit=100&sort=dateAdded",
+            "/v1/me/library/songs?l={}&limit=100&sort=dateAdded&include=catalog",
             self.language
         )).await
     }

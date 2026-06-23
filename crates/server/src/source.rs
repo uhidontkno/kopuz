@@ -2519,8 +2519,14 @@ impl MediaSource for AppleMusicSource {
     async fn validate(&self) -> AuthOutcome {
         match self.client.validate().await {
             Ok(()) => AuthOutcome::Valid,
-            Err(e) if e.contains("expired") => AuthOutcome::Expired,
-            Err(_) => AuthOutcome::Unreachable,
+            Err(e) => {
+                tracing::warn!("am.source.validate: {e}");
+                if e.contains("expired") || e.contains("401") {
+                    AuthOutcome::Expired
+                } else {
+                    AuthOutcome::Unreachable
+                }
+            }
         }
     }
 
@@ -2590,25 +2596,7 @@ impl MediaSource for AppleMusicSource {
             .await
             .map_err(SourceError::Backend)?;
         for la in &library_albums {
-            albums.push(reader::Album {
-                id: format!("applemusic:{}", la.id),
-                title: la.attributes.name.clone(),
-                artist: la.attributes.artistName.clone(),
-                genre: la.attributes.genreNames.join(", "),
-                year: la
-                    .attributes
-                    .releaseDate
-                    .split('-')
-                    .next()
-                    .and_then(|y| y.parse().ok())
-                    .unwrap_or(0),
-                cover_path: Some(std::path::PathBuf::from(format!(
-                    "applemusic:{}:{}",
-                    la.id,
-                    crate::applemusic::artwork_url(&la.attributes.artwork.url, 600)
-                ))),
-                manual_cover: false,
-            });
+            albums.push(crate::applemusic::album_from_library(la));
         }
 
         let library_songs = self
@@ -2628,16 +2616,15 @@ impl MediaSource for AppleMusicSource {
     }
 
     async fn fetch_favorites(&self) -> Result<Vec<String>, SourceError> {
-        // Apple Music library IS favorites — fetch all library song ids
-        let songs = self
+        let ids = self
             .client
-            .get_library_songs()
+            .get_favorites()
             .await
             .map_err(SourceError::Backend)?;
-        Ok(songs
+        Ok(ids
             .into_iter()
-            .map(|s| {
-                crate::applemusic::apple_music_id(&s.id)
+            .map(|id| {
+                crate::applemusic::apple_music_id(&id)
                     .key()
                     .into_owned()
             })

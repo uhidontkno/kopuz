@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -16,7 +18,18 @@ pub struct PlayParams {
     pub id: String,
     #[serde(default)]
     pub kind: String,
+    #[serde(default)]
+    #[serde(rename = "catalogId")]
+    pub catalog_id: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "isLibrary")]
+    pub is_library: Option<bool>,
+    #[serde(default)]
+    #[serde(rename = "reportingId")]
+    pub reporting_id: Option<String>,
 }
+
+// ── Catalog types (used by search, get_song, get_album, etc.) ──────
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ArtistRef {
@@ -229,6 +242,8 @@ pub struct PlaylistResp {
     pub data: Vec<PlaylistData>,
 }
 
+// ── Search types ───────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SearchResp {
     #[serde(default)]
@@ -263,6 +278,7 @@ pub struct ArtistSearchData {
 }
 
 #[allow(non_snake_case)]
+#[allow(non_snake_case)]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ArtistSearchAttributes {
     #[serde(default)]
@@ -271,7 +287,214 @@ pub struct ArtistSearchAttributes {
     pub genreNames: Vec<String>,
 }
 
+// ── Library types (format[resources]=map) ──────────────────────────
+
+/// A reference entry in the `data` array of a library response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LibraryRef {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub ref_type: String,
+}
+
+/// The top-level library response with `data` (references) and `resources` (nested map).
+/// Resources are keyed by type name, then by id: `resources["library-albums"]["l.xxx"]`.
+/// We use `serde_json::Value` because the outer map may contain multiple types
+/// (e.g. "artists" + "library-albums") and only one type is our target.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LibraryResourceResponse {
+    #[serde(default)]
+    pub next: String,
+    #[serde(default)]
+    pub data: Vec<LibraryRef>,
+    #[serde(default)]
+    pub resources: serde_json::Value,
+}
+
+// ── Library song resource ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibrarySongResource {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    #[serde(default)]
+    pub attributes: LibrarySongAttributes,
+    #[serde(default)]
+    pub relationships: LibrarySongRelationships,
+}
+
 #[allow(non_snake_case)]
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibrarySongAttributes {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub artistName: String,
+    #[serde(default)]
+    pub albumName: String,
+    #[serde(default)]
+    pub artwork: Option<Artwork>,
+    #[serde(default)]
+    pub durationInMillis: u64,
+    #[serde(default)]
+    pub trackNumber: u32,
+    #[serde(default)]
+    pub discNumber: u32,
+    #[serde(default)]
+    pub genreNames: Vec<String>,
+    #[serde(default)]
+    pub releaseDate: String,
+    #[serde(default)]
+    pub contentRating: String,
+    #[serde(default)]
+    pub playParams: Option<PlayParams>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibrarySongRelationships {
+    #[serde(default)]
+    pub catalog: RelationshipData<Vec<LibraryCatalogRef>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryCatalogRef {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub ref_type: String,
+}
+
+// ── Library album resource ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryAlbumResource {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    #[serde(default)]
+    pub attributes: LibraryAlbumAttributes,
+    #[serde(default)]
+    pub relationships: LibraryAlbumRelationships,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryAlbumAttributes {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub artistName: String,
+    #[serde(default)]
+    pub artwork: Option<Artwork>,
+    #[serde(default)]
+    pub trackCount: u32,
+    #[serde(default)]
+    pub genreNames: Vec<String>,
+    #[serde(default)]
+    pub releaseDate: String,
+    #[serde(default)]
+    pub playParams: Option<PlayParams>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryAlbumRelationships {
+    #[serde(default)]
+    pub artists: RelationshipData<Vec<LibraryCatalogRef>>,
+}
+
+// ── Library artist resource ────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryArtistResource {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    #[serde(default)]
+    pub attributes: LibraryArtistAttributes,
+    #[serde(default)]
+    pub relationships: LibraryArtistRelationships,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryArtistAttributes {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub artwork: Option<Artwork>,
+    #[serde(default)]
+    pub genreNames: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryArtistRelationships {
+    #[serde(default)]
+    pub albums: RelationshipData<Vec<LibraryCatalogRef>>,
+}
+
+// ── Library playlist resource ──────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryPlaylistResource {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    #[serde(default)]
+    pub attributes: LibraryPlaylistAttributes,
+    #[serde(default)]
+    pub relationships: LibraryPlaylistRelationships,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryPlaylistAttributes {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub artwork: Option<Artwork>,
+    #[serde(default)]
+    pub trackCount: u32,
+    #[serde(default)]
+    pub canEdit: bool,
+    #[serde(default)]
+    pub canDelete: bool,
+    #[serde(default)]
+    #[serde(rename = "isPublic")]
+    pub is_public: Option<bool>,
+    #[serde(default)]
+    #[serde(rename = "dateAdded")]
+    pub date_added: Option<String>,
+    #[serde(default)]
+    pub description: Option<LibraryPlaylistDescription>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryPlaylistDescription {
+    #[serde(default)]
+    pub standard: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct LibraryPlaylistRelationships {
+    #[serde(default)]
+    pub catalog: RelationshipData<Vec<LibraryCatalogRef>>,
+}
+
+// ── Library playlist tracks response (also uses resources map) ─────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LibraryPlaylistTracksResponse {
+    #[serde(default)]
+    pub next: String,
+    #[serde(default)]
+    pub data: Vec<LibraryRef>,
+    #[serde(default)]
+    pub resources: serde_json::Value,
+}
+
+// ── Web playback types ─────────────────────────────────────────────
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WebPlaybackResp {
     #[serde(default)]
@@ -299,115 +522,4 @@ pub struct WebPlaybackAsset {
     #[serde(default)]
     #[serde(rename = "URL")]
     pub url: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibraryAlbumResp {
-    #[serde(default)]
-    pub next: String,
-    #[serde(default)]
-    pub data: Vec<LibraryAlbumData>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibraryAlbumData {
-    pub id: String,
-    #[serde(default)]
-    #[serde(rename = "type")]
-    pub data_type: String,
-    #[serde(default)]
-    pub attributes: LibraryAlbumAttributes,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibraryAlbumAttributes {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub artistName: String,
-    #[serde(default)]
-    pub artwork: Artwork,
-    #[serde(default)]
-    pub trackCount: u32,
-    #[serde(default)]
-    pub genreNames: Vec<String>,
-    #[serde(default)]
-    pub releaseDate: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibrarySongResp {
-    #[serde(default)]
-    pub next: String,
-    #[serde(default)]
-    pub data: Vec<LibrarySongData>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibrarySongData {
-    pub id: String,
-    #[serde(default)]
-    #[serde(rename = "type")]
-    pub data_type: String,
-    #[serde(default)]
-    pub attributes: LibrarySongAttributes,
-    #[serde(default)]
-    pub relationships: TrackRelationships,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibrarySongAttributes {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub artistName: String,
-    #[serde(default)]
-    pub albumName: String,
-    #[serde(default)]
-    pub artwork: Artwork,
-    #[serde(default)]
-    pub durationInMillis: u64,
-    #[serde(default)]
-    pub trackNumber: u32,
-    #[serde(default)]
-    pub discNumber: u32,
-    #[serde(default)]
-    pub genreNames: Vec<String>,
-    #[serde(default)]
-    pub releaseDate: String,
-    #[serde(default)]
-    pub playParams: Option<PlayParams>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibraryPlaylistResp {
-    #[serde(default)]
-    pub next: String,
-    #[serde(default)]
-    pub data: Vec<LibraryPlaylistData>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibraryPlaylistData {
-    pub id: String,
-    #[serde(default)]
-    #[serde(rename = "type")]
-    pub data_type: String,
-    #[serde(default)]
-    pub attributes: LibraryPlaylistAttributes,
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct LibraryPlaylistAttributes {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub artwork: Option<Artwork>,
-    #[serde(default)]
-    pub trackCount: u32,
-    #[serde(default)]
-    pub canEdit: bool,
 }

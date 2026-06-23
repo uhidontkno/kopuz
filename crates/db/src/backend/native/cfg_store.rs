@@ -208,7 +208,8 @@ pub async fn save_config(pool: &SqlitePool, cfg: &AppConfig) -> Result<(), DbErr
 /// Hydrate one server row (creds included) — the server-switch path, so stored
 /// creds are reused instead of re-prompting sign-in.
 pub async fn load_server(pool: &SqlitePool, id: &str) -> Result<Option<MusicServer>, DbError> {
-    let row = sqlx::query!(
+    use sqlx::Row;
+    let row = sqlx::query(
         "SELECT id, name, url, service, access_token, user_id, yt_browser, yt_anonymous, \
          apple_music_storefront, apple_music_language \
          FROM servers WHERE id = ?1",
@@ -217,7 +218,6 @@ pub async fn load_server(pool: &SqlitePool, id: &str) -> Result<Option<MusicServ
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| {
-        use sqlx::Row;
         MusicServer {
             name: r.get("name"),
             url: r.get("url"),

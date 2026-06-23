@@ -777,8 +777,21 @@ impl PlayerController {
                                 .unwrap_or_default();
                                 let adam_id = adam_id.to_string();
                                 let rt = tokio::runtime::Handle::current();
-                                let bytes = rt.block_on(async move {
-                                    server::applemusic::stream::resolve_and_decrypt(&adam_id, &token).await
+                                let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    rt.block_on(async move {
+                                        server::applemusic::stream::resolve_and_decrypt(&adam_id, &token).await
+                                    })
+                                }))
+                                .unwrap_or_else(|panic| {
+                                    let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                                        s.to_string()
+                                    } else if let Some(s) = panic.downcast_ref::<String>() {
+                                        s.clone()
+                                    } else {
+                                        "unknown panic".to_string()
+                                    };
+                                    tracing::error!("am.playback: resolve_and_decrypt PANICKED: {msg}");
+                                    Err(format!("AM panic: {msg}"))
                                 });
                                 let bytes = bytes.map_err(|e| {
                                     std::io::Error::new(std::io::ErrorKind::Other, e)
@@ -808,6 +821,7 @@ impl PlayerController {
                                     Ok(Err(e)) => format!("Couldn't load this track:\n{e}"),
                                     _ => "Playback failed unexpectedly".to_string(),
                                 };
+                                tracing::error!("playback failed: {msg}");
                                 playback_error.set(Some(msg));
                                 is_loading.set(false);
                                 skip_in_progress.set(false);

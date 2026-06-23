@@ -142,14 +142,14 @@ async fn get_content_key(
     license_request: &[u8],
     adam_id: &str,
     uri_prefix: &str,
-    pssh: &str,
+    kid_base64: &str,
     bearer_token: &str,
     media_user_token: &str,
 ) -> Result<(String, Vec<u8>), String> {
     let envelope = serde_json::json!({
         "challenge": STANDARD.encode(license_request),
         "key-system": "com.widevine.alpha",
-        "uri": format!("{uri_prefix},{pssh}"),
+        "uri": format!("{uri_prefix},{kid_base64}"),
         "adamId": adam_id,
         "isLibrary": false,
         "user-initiated": true,
@@ -173,10 +173,21 @@ async fn get_content_key(
     tracing::info!("am.license: HTTP {status}");
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
+        tracing::warn!("am.license: error body: {text}");
         return Err(format!("license HTTP {status}: {text}"));
     }
 
-    let license_json: serde_json::Value = resp.json().await.map_err(|e| format!("parse license: {e}"))?;
+    let resp_body = resp.text().await.map_err(|e| format!("read license body: {e}"))?;
+    tracing::info!("am.license: raw response len={} body: {}", resp_body.len(), &resp_body[..resp_body.len().min(500)]);
+
+    let license_json: serde_json::Value = serde_json::from_str(&resp_body).map_err(|e| {
+        tracing::warn!("am.license: parse license failed: {e}");
+        format!("parse license: {e}")
+    })?;
+
+    if let Some(obj) = license_json.as_object() {
+        tracing::info!("am.license: response keys: {:?}", obj.keys().collect::<Vec<_>>());
+    }
 
     if let Some(err_code) = license_json["errorCode"].as_i64() {
         if err_code != 0 {
@@ -188,11 +199,21 @@ async fn get_content_key(
         .as_str()
         .ok_or("no license in response")?;
 
+    tracing::info!("am.license: license b64 len={}", license_b64.len());
+
     let license_data = STANDARD
         .decode(license_b64)
         .map_err(|e| format!("decode license: {e}"))?;
 
-    let keys = cdm.get_license_keys(license_request, &license_data)?;
+    tracing::info!("am.license: license binary len={}, calling cdm.get_license_keys", license_data.len());
+
+    let keys = cdm.get_license_keys(license_request, &license_data)
+        .map_err(|e| {
+            tracing::warn!("am.license: get_license_keys failed: {e}");
+            e
+        })?;
+
+    tracing::info!("am.license: got {} keys from CDM", keys.len());
 
     for key in &keys {
         if key.key_type == 1 {
@@ -358,12 +379,15 @@ pub async fn resolve_and_decrypt(adam_id: &str, media_user_token: &str) -> Resul
     tracing::info!("am.stream: building PSSH and CDM license request");
 
     let pssh = build_pssh(&playback.kid_base64)?;
+    tracing::info!("am.stream: PSSH built ({} bytes)", pssh.len());
     let init_data = STANDARD
         .decode(&pssh)
         .map_err(|e| format!("decode PSSH: {e}"))?;
 
+    tracing::info!("am.stream: creating CDM with {} byte init_data", init_data.len());
     let cdm = Cdm::new_default(&init_data)?;
     let license_request = cdm.get_license_request()?;
+    tracing::info!("am.stream: license request generated ({} bytes)", license_request.len());
 
     tracing::info!("am.stream: exchanging license with Apple");
 
@@ -372,11 +396,13 @@ pub async fn resolve_and_decrypt(adam_id: &str, media_user_token: &str) -> Resul
         &license_request,
         &adam_id,
         &playback.uri_prefix,
-        &pssh,
+        &playback.kid_base64,
         &bearer_token,
         media_user_token,
     )
     .await?;
+
+    tracing::info!("am.stream: got content key (len={}, hex={})", key_bytes.len(), &key_hex[..32.min(key_hex.len())]);
 
     tracing::info!("am.stream: downloading encrypted fMP4 from {}", playback.file_url);
 

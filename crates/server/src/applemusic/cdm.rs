@@ -75,18 +75,20 @@ fn decode_field(data: &[u8], pos: &mut usize) -> Option<(u32, u8, usize)> {
     let tag = decode_varint(data, pos)? as u32;
     let field = tag >> 3;
     let wire = (tag & 0x07) as u8;
-    let value_start = *pos;
     match wire {
         0 => {
+            let value_start = *pos;
             decode_varint(data, pos)?;
+            Some((field, wire, value_start))
         }
         2 => {
-            let len = decode_varint(data, pos)? as usize;
-            *pos += len;
+            let _len = decode_varint(data, pos)? as usize;
+            let value_start = *pos;
+            *pos += _len;
+            Some((field, wire, value_start))
         }
-        _ => return None,
+        _ => None,
     }
-    Some((field, wire, value_start))
 }
 
 fn read_bytes_field(data: &[u8], field: u32) -> Option<Vec<u8>> {
@@ -432,27 +434,49 @@ impl Cdm {
         for key_data in &keys_data {
             let (id, iv, encrypted_key, key_type) = parse_key_container(key_data);
             if encrypted_key.is_empty() || iv.is_empty() {
+                tracing::debug!("am.cdm: skipping key with empty iv or encrypted_key");
+                continue;
+            }
+            if iv.len() < 16 {
+                tracing::warn!("am.cdm: key IV is {} bytes, need >= 16, skipping", iv.len());
+                continue;
+            }
+            if encrypted_key.len() % 16 != 0 || encrypted_key.is_empty() {
+                tracing::warn!("am.cdm: key is {} bytes, not block-aligned, skipping", encrypted_key.len());
                 continue;
             }
 
-            // AES-CBC decrypt
-            let mut cipher = Aes128CbcDec::new(
+            // AES-CBC decrypt (full buffer, matching Go's CryptBlocks)
+            let cipher = Aes128CbcDec::new(
                 &encryption_key,
                 iv[..16].into(),
             );
             let mut decrypted = encrypted_key.clone();
-            let end = 16.min(decrypted.len());
-            let mut block = aes::Block::clone_from_slice(&decrypted[..end]);
-            cipher.decrypt_block_mut(&mut block);
-            decrypted[..end].copy_from_slice(&block);
+            use aes::cipher::block_padding::NoPadding;
+            use aes::cipher::BlockDecryptMut;
+            let decrypt_result = cipher.decrypt_padded_mut::<NoPadding>(&mut decrypted);
+            if let Err(e) = decrypt_result {
+                tracing::warn!("am.cdm: AES-CBC decrypt failed: {e}");
+                continue;
+            }
 
             // PKCS7 unpad
-            if let Some(&pad_len) = decrypted.last() {
-                let pad_len = pad_len as usize;
-                if pad_len > 0 && pad_len <= decrypted.len() {
-                    decrypted.truncate(decrypted.len() - pad_len);
+            if let Some(&pad_byte) = decrypted.last() {
+                let pad_len = pad_byte as usize;
+                if pad_len > 0 && pad_len <= 16 && pad_len <= decrypted.len() {
+                    let expected_pad = &decrypted[decrypted.len() - pad_len..];
+                    if expected_pad.iter().all(|&b| b == pad_byte) {
+                        decrypted.truncate(decrypted.len() - pad_len);
+                    }
                 }
             }
+
+            tracing::debug!(
+                "am.cdm: decrypted key id={} type={} value_len={}",
+                hex::encode(&id),
+                key_type,
+                decrypted.len()
+            );
 
             keys.push(CdmKey {
                 id,
@@ -461,6 +485,7 @@ impl Cdm {
             });
         }
 
+        tracing::info!("am.cdm: extracted {} keys from license", keys.len());
         Ok(keys)
     }
 }

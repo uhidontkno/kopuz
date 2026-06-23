@@ -314,6 +314,14 @@ impl AppleMusicApi {
         )).await
     }
 
+    pub async fn get_library_artists(&self) -> Result<Vec<LibraryArtistResource>, String> {
+        tracing::debug!("am.get_library_artists: starting");
+        self.library_page(&format!(
+            "/v1/me/library/artists?l={}&limit=100&sort=name",
+            self.language
+        )).await
+    }
+
     /// Fetch tracks of a library playlist using the standard format.
     /// Like the Go code, we fetch the playlist with `include=tracks` and
     /// paginate `relationships.tracks.next`.

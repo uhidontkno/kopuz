@@ -78,9 +78,9 @@ pub struct TrackData {
 pub struct TrackAttributes {
     #[serde(default)]
     pub name: String,
-    #[serde(default)]
+    #[serde(default, rename = "artistName")]
     pub artist_name: String,
-    #[serde(default)]
+    #[serde(default, rename = "albumName")]
     pub album_name: String,
     #[serde(default)]
     pub artwork: Artwork,

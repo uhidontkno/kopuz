@@ -2657,7 +2657,9 @@ impl MediaSource for AppleMusicSource {
                 id: p.id,
                 name: p.attributes.name,
                 image_tag: p.attributes.artwork.map(|a| {
-                    crate::applemusic::artwork_url(&a.url, 300)
+                    utils::jellyfin_image::encode_cover_url(
+                        &crate::applemusic::artwork_url(&a.url, 300)
+                    )
                 }),
             })
             .collect())
@@ -2717,5 +2719,25 @@ impl MediaSource for AppleMusicSource {
             .remove_from_playlist(playlist_id, &[vid.into_owned()])
             .await
             .map_err(SourceError::Backend)
+    }
+
+    async fn fetch_artist_images(&self) -> Result<Vec<(String, String)>, SourceError> {
+        tracing::info!("am.fetch_artist_images: starting");
+        let artists = self
+            .client
+            .get_library_artists()
+            .await
+            .map_err(SourceError::Backend)?;
+        let mut out = Vec::new();
+        for a in &artists {
+            if let Some(artwork) = &a.attributes.artwork {
+                if !artwork.url.is_empty() {
+                    let url = crate::applemusic::artwork_url(&artwork.url, 300);
+                    out.push((a.attributes.name.clone(), url));
+                }
+            }
+        }
+        tracing::info!("am.fetch_artist_images: {} artists with images", out.len());
+        Ok(out)
     }
 }

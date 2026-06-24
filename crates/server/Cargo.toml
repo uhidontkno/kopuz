@@ -36,9 +36,14 @@ pkcs1 = "0.7"
 aes = "0.8"
 cbc = "0.1"
 cmac = "0.7"
+ctr = "0.9"
 base64 = "0.22"
 m3u8-rs = "6"
+prost = "0.13"
 symphonia = { workspace = true }
+
+[build-dependencies]
+prost-build = "0.13"
 
 [[example]]
 name = "duration_probe"

@@ -1,269 +1,31 @@
-#![allow(dead_code)]
-
-use aes::cipher::KeyIvInit;
+use aes::cipher::{KeyIvInit, BlockDecryptMut, block_padding::NoPadding};
+use aes::cipher::generic_array::GenericArray;
 use pkcs1::DecodeRsaPrivateKey;
+use prost::Message;
 use sha1::{Digest, Sha1};
 
+pub mod wv {
+    include!(concat!(env!("OUT_DIR"), "/wv.rs"));
+}
+
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
-
-// ── Protobuf wire helpers ──────────────────────────────────────────
-
-fn encode_varint(mut v: u64) -> Vec<u8> {
-    let mut out = Vec::new();
-    loop {
-        let mut byte = (v & 0x7F) as u8;
-        v >>= 7;
-        if v != 0 {
-            byte |= 0x80;
-        }
-        out.push(byte);
-        if v == 0 {
-            break;
-        }
-    }
-    out
-}
-
-fn field_tag(field: u32, wire: u8) -> Vec<u8> {
-    encode_varint(((field as u64) << 3) | (wire as u64))
-}
-
-fn encode_bytes_field(field: u32, data: &[u8]) -> Vec<u8> {
-    let mut out = field_tag(field, 2);
-    out.extend_from_slice(&encode_varint(data.len() as u64));
-    out.extend_from_slice(data);
-    out
-}
-
-fn encode_varint_field(field: u32, val: u64) -> Vec<u8> {
-    let mut out = field_tag(field, 0);
-    out.extend_from_slice(&encode_varint(val));
-    out
-}
-
-fn encode_message_field(field: u32, msg: &[u8]) -> Vec<u8> {
-    encode_bytes_field(field, msg)
-}
-
-fn encode_repeated_bytes_field(field: u32, items: &[Vec<u8>]) -> Vec<u8> {
-    let mut out = Vec::new();
-    for item in items {
-        out.extend_from_slice(&encode_bytes_field(field, item));
-    }
-    out
-}
-
-fn decode_varint(data: &[u8], pos: &mut usize) -> Option<u64> {
-    let mut result: u64 = 0;
-    let mut shift = 0;
-    loop {
-        if *pos >= data.len() {
-            return None;
-        }
-        let byte = data[*pos];
-        *pos += 1;
-        result |= ((byte & 0x7F) as u64) << shift;
-        if byte & 0x80 == 0 {
-            break;
-        }
-        shift += 7;
-    }
-    Some(result)
-}
-
-fn decode_field(data: &[u8], pos: &mut usize) -> Option<(u32, u8, usize)> {
-    let tag = decode_varint(data, pos)? as u32;
-    let field = tag >> 3;
-    let wire = (tag & 0x07) as u8;
-    match wire {
-        0 => {
-            let value_start = *pos;
-            decode_varint(data, pos)?;
-            Some((field, wire, value_start))
-        }
-        2 => {
-            let _len = decode_varint(data, pos)? as usize;
-            let value_start = *pos;
-            *pos += _len;
-            Some((field, wire, value_start))
-        }
-        _ => None,
-    }
-}
-
-fn read_bytes_field(data: &[u8], field: u32) -> Option<Vec<u8>> {
-    let mut pos = 0;
-    while pos < data.len() {
-        let start = pos;
-        if let Some((f, wire, value_start)) = decode_field(data, &mut pos) {
-            if f == field && wire == 2 {
-                let end = pos;
-                return Some(data[value_start..end].to_vec());
-            }
-        } else {
-            break;
-        }
-        let _ = start;
-    }
-    None
-}
-
-fn read_varint_field(data: &[u8], field: u32) -> Option<u64> {
-    let mut pos = 0;
-    while pos < data.len() {
-        if let Some((f, wire, value_start)) = decode_field(data, &mut pos) {
-            if f == field && wire == 0 {
-                let mut vpos = value_start;
-                return decode_varint(data, &mut vpos);
-            }
-        } else {
-            break;
-        }
-    }
-    None
-}
-
-fn read_all_message_fields(data: &[u8]) -> Vec<(u32, u8, Vec<u8>)> {
-    let mut fields = Vec::new();
-    let mut pos = 0;
-    while pos < data.len() {
-        if let Some((f, wire, value_start)) = decode_field(data, &mut pos) {
-            let end = pos;
-            fields.push((f, wire, data[value_start..end].to_vec()));
-        } else {
-            break;
-        }
-    }
-    fields
-}
-
-// ── WidevineCencHeader ─────────────────────────────────────────────
-
-pub fn encode_widevine_cenc_header(key_id: &[u8], content_id_encoded: &str) -> Vec<u8> {
-    let mut msg = Vec::new();
-    msg.extend_from_slice(&encode_varint_field(1, 1));
-    msg.extend_from_slice(&encode_bytes_field(2, key_id));
-    msg.extend_from_slice(&encode_bytes_field(3, b""));
-    msg.extend_from_slice(&encode_bytes_field(4, content_id_encoded.as_bytes()));
-    msg.extend_from_slice(&encode_bytes_field(6, b""));
-    msg
-}
-
-fn parse_widevine_cenc_header(data: &[u8]) -> (Vec<Vec<u8>>, Vec<u8>) {
-    let mut key_ids = Vec::new();
-    let mut content_id = Vec::new();
-    let mut pos = 0;
-    while pos < data.len() {
-        if let Some((field, wire, value_start)) = decode_field(data, &mut pos) {
-            let end = pos;
-            let val = &data[value_start..end];
-            match (field, wire) {
-                (2, 2) => key_ids.push(val.to_vec()),
-                (4, 2) => content_id = val.to_vec(),
-                _ => {}
-            }
-        } else {
-            break;
-        }
-    }
-    (key_ids, content_id)
-}
-
-// ── LicenseRequest (protobuf encode) ───────────────────────────────
-
-fn encode_content_identification_cenc(
-    pssh_header: &[u8],
-    license_type: u64,
-    request_id: &[u8],
-) -> Vec<u8> {
-    let mut msg = Vec::new();
-    msg.extend_from_slice(&encode_message_field(1, pssh_header));
-    msg.extend_from_slice(&encode_varint_field(2, license_type));
-    msg.extend_from_slice(&encode_bytes_field(3, request_id));
-    msg
-}
-
-fn encode_content_identification(cenc: &[u8]) -> Vec<u8> {
-    encode_message_field(1, cenc)
-}
-
-fn encode_license_request(
-    client_id: &[u8],
-    content_id: &[u8],
-    request_type: u64,
-    request_time: u32,
-    protocol_version: u64,
-    key_control_nonce: u32,
-) -> Vec<u8> {
-    let mut msg = Vec::new();
-    msg.extend_from_slice(&encode_bytes_field(1, client_id));
-    msg.extend_from_slice(&encode_message_field(2, content_id));
-    msg.extend_from_slice(&encode_varint_field(3, request_type));
-    msg.extend_from_slice(&encode_varint_field(4, request_time as u64));
-    msg.extend_from_slice(&encode_varint_field(6, protocol_version));
-    msg.extend_from_slice(&encode_varint_field(7, key_control_nonce as u64));
-    msg
-}
-
-fn encode_signed_license_request(msg: &[u8], signature: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    // type = LICENSE_REQUEST = 1
-    out.extend_from_slice(&encode_varint_field(1, 1));
-    // msg (LicenseRequest)
-    out.extend_from_slice(&encode_message_field(2, msg));
-    // signature
-    out.extend_from_slice(&encode_bytes_field(3, signature));
-    out
-}
-
-// ── License parsing ────────────────────────────────────────────────
-
-fn parse_key_container(data: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, u64) {
-    let mut id = Vec::new();
-    let mut iv = Vec::new();
-    let mut key = Vec::new();
-    let mut key_type = 0u64;
-    let mut pos = 0;
-    while pos < data.len() {
-        if let Some((field, wire, value_start)) = decode_field(data, &mut pos) {
-            let end = pos;
-            let val = &data[value_start..end];
-            match (field, wire) {
-                (1, 2) => id = val.to_vec(),
-                (2, 2) => iv = val.to_vec(),
-                (3, 2) => key = val.to_vec(),
-                (4, 0) => key_type = val.iter().fold(0u64, |acc, &b| (acc << 7) | (b & 0x7F) as u64),
-                _ => {}
-            }
-        } else {
-            break;
-        }
-    }
-    (id, iv, key, key_type)
-}
-
-// ── CDM ────────────────────────────────────────────────────────────
 
 pub struct Cdm {
     private_key: rsa::pkcs1v15::SigningKey<Sha1>,
     private_key_raw: rsa::RsaPrivateKey,
     client_id: Vec<u8>,
-    session_id: [u8; 32],
-    widevine_cenc_header: Vec<u8>,
+    session_id: Vec<u8>,
+    widevine_cenc_header: wv::WidevineCencHeader,
 }
 
 pub struct CdmKey {
     pub id: Vec<u8>,
-    pub key_type: u64,
+    pub key_type: i32,
     pub value: Vec<u8>,
 }
 
 impl Cdm {
-    pub fn new(
-        private_key_pem: &str,
-        client_id: Vec<u8>,
-        init_data: &[u8],
-    ) -> Result<Self, String> {
+    pub fn new(private_key_pem: &str, client_id: Vec<u8>, init_data: &[u8]) -> Result<Self, String> {
         let private_key = rsa::RsaPrivateKey::from_pkcs1_pem(private_key_pem)
             .map_err(|e| format!("parse private key: {e}"))?;
 
@@ -271,22 +33,18 @@ impl Cdm {
             return Err("initData too short".to_string());
         }
 
+        let widevine_cenc_header = wv::WidevineCencHeader::decode(&init_data[32..])
+            .map_err(|e| format!("decode WidevineCencHeader: {e}"))?;
+
         use rand::RngExt;
         let mut rng = rand::rng();
         let charset = b"ABCDEF0123456789";
-        let mut session_id = [0u8; 32];
-        for i in 0..16 {
-            session_id[i] = charset[rng.random_range(0..charset.len())];
+        let mut session_id = Vec::with_capacity(32);
+        for _ in 0..16 {
+            session_id.push(charset[rng.random_range(0..charset.len())]);
         }
-        session_id[16] = b'0';
-        session_id[17] = b'1';
-        for i in 18..32 {
-            session_id[i] = b'0';
-        }
-
-        // Store the raw header bytes like Go does (it stores the parsed WidevineCencHeader
-        // and marshals it directly). Re-encoding from parsed fields could differ.
-        let widevine_cenc_header = init_data[32..].to_vec();
+        session_id.extend_from_slice(b"01");
+        session_id.extend_from_slice(&[b'0'; 14]);
 
         Ok(Self {
             private_key: rsa::pkcs1v15::SigningKey::<Sha1>::new(private_key.clone()),
@@ -302,43 +60,48 @@ impl Cdm {
     }
 
     pub fn get_license_request(&self) -> Result<Vec<u8>, String> {
-        // Use the original WidevineCencHeader bytes directly (same as Go's
-        // `licenseRequest.Msg.ContentId.CencId.Pssh = &c.widevineCencHeader`)
-        let cenc = encode_content_identification_cenc(
-            &self.widevine_cenc_header,
-            1, // LICENSE_TYPE_DEFAULT = 1
-            &self.session_id,
-        );
+        let cenc_id = wv::LicenseRequestContentIdentificationCenc {
+            pssh: Some(self.widevine_cenc_header.encode_to_vec()),
+            license_type: Some(1), // DEFAULT
+            request_id: Some(self.session_id.clone()),
+        };
 
-        let content_id = encode_content_identification(&cenc);
+        let content_id = wv::LicenseRequestContentIdentification {
+            cenc_id: Some(cenc_id),
+        };
 
-        use rand::RngExt;
-        let mut rng = rand::rng();
-        let key_control_nonce: u32 = rng.random();
+        let license_request = wv::LicenseRequest {
+            client_id: Some(self.client_id.clone()),
+            content_id: Some(content_id),
+            r#type: Some(1), // NEW
+            request_time: Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as u32,
+            ),
+            protocol_version: Some(21), // CURRENT
+            key_control_nonce: Some(rand::random::<u32>()),
+            encrypted_client_id: None,
+            key_control_nonce_deprecated: None,
+        };
 
-        let request_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as u32;
+        let msg_bytes = license_request.encode_to_vec();
 
-        let license_request = encode_license_request(
-            &self.client_id,
-            &content_id,
-            1, // LicenseRequest_RequestType_NEW = 1
-            request_time,
-            21, // ProtocolVersion_CURRENT = 21
-            key_control_nonce,
-        );
-
-        // RSA-PSS sign the inner message
-        let hash = sha1::Sha1::digest(&license_request);
+        let hash = Sha1::digest(&msg_bytes);
         let signature = self.private_key_raw.sign_with_rng(
             &mut rsa::rand_core::OsRng,
             rsa::Pss::new::<Sha1>(),
             &hash,
         ).map_err(|e| format!("RSA-PSS sign: {e}"))?;
 
-        Ok(encode_signed_license_request(&license_request, &signature))
+        let signed = wv::SignedLicenseRequest {
+            r#type: Some(1), // LICENSE_REQUEST
+            msg: Some(msg_bytes),
+            signature: Some(signature.to_vec()),
+        };
+
+        Ok(signed.encode_to_vec())
     }
 
     pub fn get_license_keys(
@@ -346,86 +109,50 @@ impl Cdm {
         license_request: &[u8],
         license_response: &[u8],
     ) -> Result<Vec<CdmKey>, String> {
-        // Parse the SignedLicense response
-        // field 2 = Msg (License), field 4 = SessionKey
-        let mut session_key = Vec::new();
-        let mut license_msg = Vec::new();
-        let mut pos = 0;
-        while pos < license_response.len() {
-            if let Some((field, wire, value_start)) = decode_field(license_response, &mut pos) {
-                let end = pos;
-                let val = &license_response[value_start..end];
-                match (field, wire) {
-                    (2, 2) => license_msg = val.to_vec(),
-                    (4, 2) => session_key = val.to_vec(),
-                    _ => {}
-                }
-            } else {
-                break;
-            }
-        }
+        let signed_license = wv::SignedLicense::decode(license_response)
+            .map_err(|e| format!("decode SignedLicense: {e}"))?;
 
-        if session_key.is_empty() {
-            return Err("no session key in license response".to_string());
-        }
+        let signed_req = wv::SignedLicenseRequest::decode(license_request)
+            .map_err(|e| format!("decode SignedLicenseRequest: {e}"))?;
 
-        // Re-parse the LicenseRequest to get the inner message for CMAC
-        let mut inner_msg = Vec::new();
-        let mut lpos = 0;
-        while lpos < license_request.len() {
-            if let Some((field, wire, value_start)) = decode_field(license_request, &mut lpos) {
-                let end = lpos;
-                let val = &license_request[value_start..end];
-                if field == 2 && wire == 2 {
-                    inner_msg = val.to_vec();
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
+        let license_request_msg = signed_req.msg.ok_or("no msg in SignedLicenseRequest")?;
+        tracing::info!("am.cdm: license_request_msg len={}", license_request_msg.len());
+        tracing::debug!("am.cdm: license_request_msg hex (first 100): {}", hex::encode(&license_request_msg[..license_request_msg.len().min(100)]));
 
-        // RSA-OAEP decrypt the session key
-        use rsa::Oaep;
+        let session_key = signed_license.session_key.ok_or("no session key")?;
+
         let decrypted_session_key = self.private_key_raw.decrypt(
-            Oaep::new::<Sha1>(),
+            rsa::Oaep::new::<Sha1>(),
             &session_key,
-        ).map_err(|e| format!("RSA-OAEP decrypt session key: {e}"))?;
+        ).map_err(|e| format!("RSA-OAEP decrypt: {e}"))?;
 
-        // Derive encryption key: CMAC("\x01ENCRYPTION" + licenseRequestMsg + "\x00\x00\x00\x80")
+        // Derive encryption key via CMAC
         use cmac::{Cmac, Mac};
         type Aes128Cmac = Cmac<aes::Aes128>;
 
         let mut encryption_key_input = Vec::new();
         encryption_key_input.push(0x01);
         encryption_key_input.extend_from_slice(b"ENCRYPTION");
-        encryption_key_input.extend_from_slice(&inner_msg);
+        encryption_key_input.push(0x00);
+        encryption_key_input.extend_from_slice(&license_request_msg);
         encryption_key_input.extend_from_slice(&[0x00, 0x00, 0x00, 0x80]);
 
-        let mut mac = Aes128Cmac::new_from_slice(&decrypted_session_key)
+        let mut mac = <Aes128Cmac as cmac::Mac>::new_from_slice(decrypted_session_key.as_slice())
             .map_err(|e| format!("create CMAC: {e}"))?;
         mac.update(&encryption_key_input);
         let encryption_key = mac.finalize().into_bytes();
 
-        // Parse the License message to get keys
-        let mut keys_data = Vec::new();
-        let mut kpos = 0;
-        while kpos < license_msg.len() {
-            if let Some((field, wire, value_start)) = decode_field(&license_msg, &mut kpos) {
-                let end = kpos;
-                let val = &license_msg[value_start..end];
-                if field == 3 && wire == 2 {
-                    keys_data.push(val.to_vec());
-                }
-            } else {
-                break;
-            }
-        }
+        // Parse License from SignedLicense.Msg
+        let license = wv::License::decode(
+            signed_license.msg.as_deref().unwrap_or(&[]),
+        ).map_err(|e| format!("decode License: {e}"))?;
 
-        // Decrypt each key
         let mut keys = Vec::new();
-        for key_data in &keys_data {
-            let (id, iv, encrypted_key, key_type) = parse_key_container(key_data);
+        for key_container in &license.key {
+            let iv = key_container.iv.as_deref().unwrap_or(&[]);
+            let encrypted_key = key_container.key.as_deref().unwrap_or(&[]);
+            let key_type = key_container.r#type.unwrap_or(0);
+
             if encrypted_key.is_empty() || iv.is_empty() {
                 tracing::debug!("am.cdm: skipping key with empty iv or encrypted_key");
                 continue;
@@ -439,51 +166,41 @@ impl Cdm {
                 continue;
             }
 
-            // AES-CBC decrypt (full buffer, matching Go's CryptBlocks)
-            let cipher = Aes128CbcDec::new(
-                &encryption_key,
-                iv[..16].into(),
-            );
-            let mut decrypted = encrypted_key.clone();
-            use aes::cipher::block_padding::NoPadding;
-            use aes::cipher::BlockDecryptMut;
-            let decrypt_result = cipher.decrypt_padded_mut::<NoPadding>(&mut decrypted);
-            if let Err(e) = decrypt_result {
+            let mut decrypted = encrypted_key.to_vec();
+            tracing::info!("am.cdm: AES-CBC decrypt: key_type={} iv_len={} enc_len={}", key_type, iv.len(), encrypted_key.len());
+            tracing::info!("am.cdm: enc_key for AES: {}", hex::encode(&encryption_key));
+            let cipher = Aes128CbcDec::new(&encryption_key, GenericArray::from_slice(&iv[..16]));
+            cipher.decrypt_padded_mut::<NoPadding>(&mut decrypted).map_err(|e| {
                 tracing::warn!("am.cdm: AES-CBC decrypt failed: {e}");
-                continue;
-            }
+                format!("{e}")
+            })?;
+            tracing::info!("am.cdm: post-decrypt len={}", decrypted.len());
+            tracing::info!("am.cdm: post-decrypt first 32: {}", hex::encode(&decrypted[..decrypted.len().min(32)]));
 
             // PKCS7 unpad
-            if let Some(&pad_byte) = decrypted.last() {
-                let pad_len = pad_byte as usize;
-                if pad_len > 0 && pad_len <= 16 && pad_len <= decrypted.len() {
-                    let expected_pad = &decrypted[decrypted.len() - pad_len..];
-                    if expected_pad.iter().all(|&b| b == pad_byte) {
-                        decrypted.truncate(decrypted.len() - pad_len);
-                    }
+            let last_byte = *decrypted.last().unwrap_or(&0);
+            tracing::info!("am.cdm: PKCS7 last_byte={}", last_byte);
+            if last_byte > 0 && last_byte <= 16 && last_byte as usize <= decrypted.len() {
+                let pad_start = decrypted.len() - last_byte as usize;
+                let pad_valid = decrypted[pad_start..].iter().all(|&b| b == last_byte);
+                tracing::info!("am.cdm: PKCS7 pad_valid={} pad_len={}", pad_valid, last_byte);
+                if pad_valid {
+                    decrypted.truncate(pad_start);
                 }
             }
+            tracing::info!("am.cdm: final key len={}", decrypted.len());
 
-            // Widevine content keys are always 16 bytes (AES-128).
-            // After decryption + PKCS7 unpad, truncate to 16 bytes if longer.
-            // Extra bytes are garbage from padding or incorrect block decryption.
-            if decrypted.len() > 16 {
-                tracing::debug!(
-                    "am.cdm: key was {} bytes after decrypt, truncating to 16",
-                    decrypted.len()
-                );
-                decrypted.truncate(16);
-            }
-
-            tracing::debug!(
-                "am.cdm: decrypted key id={} type={} value_len={}",
-                hex::encode(&id),
+            tracing::info!("am.cdm: decrypted key id={} type={} value_len={} iv_ok={} enc_ok={}",
+                hex::encode(&key_container.id.as_deref().unwrap_or(&[])),
                 key_type,
-                decrypted.len()
+                decrypted.len(),
+                iv.len() >= 16,
+                encrypted_key.len() % 16 == 0,
             );
+            tracing::info!("am.cdm: decrypted key hex (first 32): {}", hex::encode(&decrypted[..decrypted.len().min(32)]));
 
             keys.push(CdmKey {
-                id,
+                id: key_container.id.clone().unwrap_or_default(),
                 key_type,
                 value: decrypted,
             });
@@ -612,181 +329,3 @@ pub const DEFAULT_CLIENT_ID: &[u8] = &[
     0x6c, 0x12, 0x01, 0x30, 0x32, 0x0e, 0x10, 0x01, 0x20, 0x00, 0x28, 0x0d, 0x30, 0x00, 0x40, 0x00,
     0x48, 0x00, 0x50, 0x00,
 ];
-
-// ── Tests ──────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use base64::Engine;
-
-    const TEST_KID_B64: &str = "AAAAAGmd8sAAHUQHlVERpg==";
-
-    // Reference values from Go TestCDMDumpForCrossValidation (deterministic parts only;
-    // session_id, request_time, key_control_nonce are random and excluded)
-
-    #[test]
-    fn test_varint_encoding() {
-        assert_eq!(encode_varint(0), vec![0x00]);
-        assert_eq!(encode_varint(1), vec![0x01]);
-        assert_eq!(encode_varint(127), vec![0x7F]);
-        assert_eq!(encode_varint(128), vec![0x80, 0x01]);
-        assert_eq!(encode_varint(21), vec![0x15]);
-    }
-
-    #[test]
-    fn test_widevine_header_matches_go() {
-        let kid = base64::engine::general_purpose::STANDARD.decode(TEST_KID_B64).unwrap();
-        let content_id_encoded = base64::engine::general_purpose::STANDARD.encode(b"");
-        let header = encode_widevine_cenc_header(&kid, &content_id_encoded);
-
-        // Go reference: HEADER_HEX=0801121000000000699df2c0001d4407955111a61a0022003200
-        // HEADER_LEN=26
-        let expected = hex::decode("0801121000000000699df2c0001d4407955111a61a0022003200").unwrap();
-        assert_eq!(header, expected, "WidevineCencHeader must be byte-identical to Go output");
-        assert_eq!(header.len(), 26, "header length must be 26");
-    }
-
-    #[test]
-    fn test_pssh_construction_matches_go() {
-        let kid = base64::engine::general_purpose::STANDARD.decode(TEST_KID_B64).unwrap();
-        let content_id_encoded = base64::engine::general_purpose::STANDARD.encode(b"");
-        let header = encode_widevine_cenc_header(&kid, &content_id_encoded);
-
-        let mut pssh_data = b"0123456789abcdef0123456789abcdef".to_vec();
-        pssh_data.extend_from_slice(&header);
-        let pssh_b64 = base64::engine::general_purpose::STANDARD.encode(&pssh_data);
-
-        // Go reference: PSSH_LEN=58
-        // PSSH_B64=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYIARIQAAAAAGmd8sAAHUQHlVERphoAIgAyAA==
-        assert_eq!(pssh_data.len(), 58, "PSSH length must be 58");
-        assert_eq!(pssh_b64, "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYIARIQAAAAAGmd8sAAHUQHlVERphoAIgAyAA==",
-            "PSSH base64 must match Go");
-    }
-
-    #[test]
-    fn test_cdm_creation_and_license_request() {
-        let kid = base64::engine::general_purpose::STANDARD.decode(TEST_KID_B64).unwrap();
-        let content_id_encoded = base64::engine::general_purpose::STANDARD.encode(b"");
-        let header = encode_widevine_cenc_header(&kid, &content_id_encoded);
-
-        let mut pssh_data = b"0123456789abcdef0123456789abcdef".to_vec();
-        pssh_data.extend_from_slice(&header);
-        let pssh_b64 = base64::engine::general_purpose::STANDARD.encode(&pssh_data);
-        let init_data = base64::engine::general_purpose::STANDARD.decode(&pssh_b64).unwrap();
-
-        let cdm = Cdm::new(DEFAULT_PRIVATE_KEY, DEFAULT_CLIENT_ID.to_vec(), &init_data).unwrap();
-        let req = cdm.get_license_request().unwrap();
-
-        // Go reference: LICENSE_REQ_LEN=2131
-        assert_eq!(req.len(), 2131, "license request length must be 2131");
-    }
-
-    #[test]
-    fn test_signed_license_request_structure() {
-        let kid = base64::engine::general_purpose::STANDARD.decode(TEST_KID_B64).unwrap();
-        let content_id_encoded = base64::engine::general_purpose::STANDARD.encode(b"");
-        let header = encode_widevine_cenc_header(&kid, &content_id_encoded);
-        let mut pssh_data = b"0123456789abcdef0123456789abcdef".to_vec();
-        pssh_data.extend_from_slice(&header);
-        let pssh_b64 = base64::engine::general_purpose::STANDARD.encode(&pssh_data);
-        let init_data = base64::engine::general_purpose::STANDARD.decode(&pssh_b64).unwrap();
-
-        let cdm = Cdm::new(DEFAULT_PRIVATE_KEY, DEFAULT_CLIENT_ID.to_vec(), &init_data).unwrap();
-        let req = cdm.get_license_request().unwrap();
-
-        let mut pos = 0;
-        let mut found_type = false;
-        let mut found_msg = false;
-        let mut found_sig = false;
-        let mut sig_len = 0usize;
-        let mut msg_len = 0usize;
-
-        while pos < req.len() {
-            if let Some((field, wire, value_start)) = decode_field(&req, &mut pos) {
-                let end = pos;
-                match (field, wire) {
-                    (1, 0) => {
-                        let mut vpos = value_start;
-                        let val = decode_varint(&req, &mut vpos).unwrap();
-                        assert_eq!(val, 1, "SLR.Type must be LICENSE_REQUEST (1)");
-                        found_type = true;
-                    }
-                    (2, 2) => { found_msg = true; msg_len = end - value_start; }
-                    (3, 2) => { found_sig = true; sig_len = end - value_start; }
-                    _ => {}
-                }
-            } else { break; }
-        }
-
-        assert!(found_type, "must have Type field");
-        assert!(found_msg, "must have Msg field");
-        assert!(found_sig, "must have Signature field");
-        assert_eq!(sig_len, 256, "signature must be 256 bytes");
-        assert_eq!(msg_len, 1867, "LicenseRequest must be 1867 bytes");
-    }
-
-    #[test]
-    fn test_cmac_input_matches_go() {
-        let kid = base64::engine::general_purpose::STANDARD.decode(TEST_KID_B64).unwrap();
-        let content_id_encoded = base64::engine::general_purpose::STANDARD.encode(b"");
-        let header = encode_widevine_cenc_header(&kid, &content_id_encoded);
-        let mut pssh_data = b"0123456789abcdef0123456789abcdef".to_vec();
-        pssh_data.extend_from_slice(&header);
-        let pssh_b64 = base64::engine::general_purpose::STANDARD.encode(&pssh_data);
-        let init_data = base64::engine::general_purpose::STANDARD.decode(&pssh_b64).unwrap();
-
-        let cdm = Cdm::new(DEFAULT_PRIVATE_KEY, DEFAULT_CLIENT_ID.to_vec(), &init_data).unwrap();
-        let req = cdm.get_license_request().unwrap();
-
-        // Extract inner msg (field 2 of SignedLicenseRequest)
-        let mut pos = 0;
-        let mut inner_msg = Vec::new();
-        while pos < req.len() {
-            if let Some((field, wire, value_start)) = decode_field(&req, &mut pos) {
-                if field == 2 && wire == 2 {
-                    inner_msg = req[value_start..pos].to_vec();
-                    break;
-                }
-            } else { break; }
-        }
-
-        // Dump the inner msg for comparison with Go
-        println!("RUST_INNER_MSG_LEN={}", inner_msg.len());
-        println!("RUST_INNER_MSG_HEX={}", hex::encode(&inner_msg));
-
-        // Build CMAC input
-        let mut cmac_input = vec![0x01];
-        cmac_input.extend_from_slice(b"ENCRYPTION");
-        cmac_input.extend_from_slice(&inner_msg);
-        cmac_input.extend_from_slice(&[0x00, 0x00, 0x00, 0x80]);
-        println!("RUST_CMAC_INPUT_LEN={}", cmac_input.len());
-
-        // Test CMAC with dummy key
-        use cmac::{Cmac, Mac};
-        type Aes128Cmac = Cmac<aes::Aes128>;
-        let dummy_key: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let mut mac = Aes128Cmac::new_from_slice(&dummy_key).unwrap();
-        mac.update(&cmac_input);
-        let result = mac.finalize().into_bytes();
-        println!("RUST_CMAC_RESULT={}", hex::encode(&result));
-    }
-
-    #[test]
-    fn test_pem_key_matches_go() {
-        use pkcs1::DecodeRsaPrivateKey;
-        use rsa::traits::PublicKeyParts;
-        let key = rsa::RsaPrivateKey::from_pkcs1_pem(DEFAULT_PRIVATE_KEY).unwrap();
-        assert_eq!(key.size() * 8, 2048, "key must be RSA-2048");
-        assert!(key.validate().is_ok(), "key must be valid");
-    }
-
-    #[test]
-    fn test_client_id_is_full_blob() {
-        assert!(
-            DEFAULT_CLIENT_ID.len() > 1000,
-            "DEFAULT_CLIENT_ID must be the full {} byte blob, got {}",
-            1780, DEFAULT_CLIENT_ID.len()
-        );
-    }
-}

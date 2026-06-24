@@ -142,10 +142,19 @@ fn build_pssh(kid_base64: &str) -> Result<String, String> {
 
     let content_id_encoded = STANDARD.encode(b"");
 
-    let header = super::cdm::encode_widevine_cenc_header(&kid, &content_id_encoded);
+    use prost::Message;
+    let header = super::cdm::wv::WidevineCencHeader {
+        algorithm: Some(1), // AESCTR
+        key_id: vec![kid.to_vec()],
+        provider: Some(String::new()),
+        content_id: Some(content_id_encoded.into_bytes()),
+        track_type_deprecated: None,
+        policy: Some(String::new()),
+    };
+    let header_bytes = header.encode_to_vec();
 
     let mut pssh = b"0123456789abcdef0123456789abcdef".to_vec();
-    pssh.extend_from_slice(&header);
+    pssh.extend_from_slice(&header_bytes);
 
     Ok(STANDARD.encode(&pssh))
 }
@@ -234,7 +243,7 @@ async fn get_content_key(
     tracing::info!("am.license: got {} keys from CDM", keys.len());
 
     for key in &keys {
-        if key.key_type == 1 {
+        if key.key_type == 2 {
             // CONTENT key
             let key_hex = hex::encode(&key.value);
             tracing::info!("am.license: got content key ({} bytes)", key.value.len());
@@ -364,96 +373,18 @@ pub async fn resolve_and_decrypt(adam_id: &str, media_user_token: &str) -> Resul
         &key_hex[..32.min(key_hex.len())]
     );
 
-    // Two-step: mp4decrypt decrypts the fMP4, then MP4Box extracts raw AAC.
-    // mp4decrypt handles Apple Music's CENC/fPIFF encryption.
-    // MP4Box -raw extracts plain ADTS AAC that Symphonia can decode.
-    let decrypted = decrypt_and_extract_aac(&encrypted_bytes, &key_hex).await?;
+    let decrypted = crate::applemusic::cenc::decrypt_fmp4(&encrypted_bytes, &key_bytes)?;
 
-    tracing::info!("am.stream: decrypted {} bytes", decrypted.len());
-
-    Ok(decrypted)
-}
-
-/// Two-step decryption + AAC extraction pipeline:
-/// 1. mp4decrypt: decrypt Apple Music's fragmented CENC MP4 → standard m4a
-/// 2. MP4Box -raw: extract plain AAC from the m4a
-/// Falls back to the m4a if MP4Box fails.
-async fn decrypt_and_extract_aac(encrypted: &[u8], key_hex: &str) -> Result<Vec<u8>, String> {
-    use tokio::fs;
-    use std::process::Stdio;
-
+    // Save decrypted output for testing
     let tmp_dir = std::env::temp_dir().join("kopuz_am_decrypt");
-    fs::create_dir_all(&tmp_dir).await.map_err(|e| format!("create tmp dir: {e}"))?;
-
+    let _ = tokio::fs::create_dir_all(&tmp_dir).await;
     let id = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
+    let out_path = tmp_dir.join(format!("decrypted_{id}.m4a"));
+    let _ = tokio::fs::write(&out_path, &decrypted).await;
+    tracing::info!("am.stream: decrypted {} bytes → {}", decrypted.len(), out_path.display());
 
-    let encrypted_path = tmp_dir.join(format!("enc_{id}.m4s"));
-    let decrypted_path = tmp_dir.join(format!("dec_{id}.m4a"));
-    let aac_path = tmp_dir.join(format!("aac_{id}.aac"));
-
-    fs::write(&encrypted_path, encrypted).await.map_err(|e| format!("write encrypted: {e}"))?;
-
-    // Step 1: mp4decrypt
-    tracing::info!("am.decrypt: step 1 — mp4decrypt --key 1:{key_hex}");
-    let status = tokio::process::Command::new("mp4decrypt")
-        .arg("--key")
-        .arg(format!("1:{key_hex}"))
-        .arg(&encrypted_path)
-        .arg(&decrypted_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .status()
-        .await
-        .map_err(|e| format!("mp4decrypt spawn: {e}"))?;
-
-    if !status.success() {
-        let _ = fs::remove_file(&encrypted_path).await;
-        return Err(format!("mp4decrypt failed with status {status}"));
-    }
-
-    let dec_size = fs::metadata(&decrypted_path).await.map(|m| m.len()).unwrap_or(0);
-    tracing::info!("am.decrypt: mp4decrypt produced {dec_size} bytes → {}", decrypted_path.display());
-
-    // Step 2: MP4Box -raw to extract plain AAC
-    tracing::info!("am.decrypt: step 2 — MP4Box -raw 1 → AAC");
-    let output = tokio::process::Command::new("MP4Box")
-        .arg("-raw")
-        .arg("1")
-        .arg(&decrypted_path)
-        .arg("-out")
-        .arg(&aac_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .await
-        .map_err(|e| format!("MP4Box spawn: {e}"))?;
-
-    let mp4box_stdout = String::from_utf8_lossy(&output.stdout);
-    let mp4box_stderr = String::from_utf8_lossy(&output.stderr);
-    if !mp4box_stdout.is_empty() {
-        tracing::info!("am.decrypt: MP4Box stdout: {}", mp4box_stdout.trim());
-    }
-    if !mp4box_stderr.is_empty() {
-        tracing::warn!("am.decrypt: MP4Box stderr: {}", mp4box_stderr.trim());
-    }
-
-    if !output.status.success() {
-        tracing::warn!("am.decrypt: MP4Box failed (status={}), falling back to m4a at {}",
-            output.status, decrypted_path.display());
-        let aac_bytes = fs::read(&decrypted_path).await.map_err(|e| format!("read m4a: {e}"))?;
-        let _ = fs::remove_file(&encrypted_path).await;
-        let _ = fs::remove_file(&aac_path).await;
-        return Ok(aac_bytes);
-    }
-
-    let aac_bytes = fs::read(&aac_path).await.map_err(|e| format!("read AAC: {e}"))?;
-    let _ = fs::remove_file(&encrypted_path).await;
-    // Keep decrypted m4a and extracted aac for debugging
-    tracing::info!("am.decrypt: files kept at {} and {}", decrypted_path.display(), aac_path.display());
-
-    tracing::info!("am.decrypt: extracted {} bytes of raw AAC", aac_bytes.len());
-    Ok(aac_bytes)
+    Ok(decrypted)
 }

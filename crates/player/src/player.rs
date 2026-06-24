@@ -781,27 +781,44 @@ impl Player {
         }
         let source_sample_rate = audio_params.sample_rate.unwrap_or(target_sample_rate);
 
-        let mut decoder: Box<dyn AudioDecoder> = match symphonia::default::get_codecs()
-            .make_audio_decoder(&audio_params, &AudioDecoderOptions::default())
-        {
-            Ok(d) => d,
-            Err(_) => match symphonia_adapter_libopus::OpusDecoder::try_registry_new(
-                &audio_params,
-                &AudioDecoderOptions::default(),
-            ) {
-                Ok(d) => d,
-                Err(_) => match symphonia_adapter_fdk_aac::AacDecoder::try_registry_new(
+        let mut decoder: Box<dyn AudioDecoder> = {
+            let codec = audio_params.codec;
+            let is_aac = format!("{codec}").contains("1007");
+            if is_aac {
+                match symphonia_adapter_fdk_aac::AacDecoder::try_registry_new(
                     &audio_params,
                     &AudioDecoderOptions::default(),
                 ) {
                     Ok(d) => d,
-                    Err(e) => {
-                        tracing::error!(error = %e, "symphonia codec error");
-                        finish_natural(&state);
-                        return;
-                    }
-                },
-            },
+                    Err(_) => match symphonia::default::get_codecs()
+                        .make_audio_decoder(&audio_params, &AudioDecoderOptions::default())
+                    {
+                        Ok(d) => d,
+                        Err(e) => {
+                            tracing::error!(error = %e, "symphonia AAC codec error");
+                            finish_natural(&state);
+                            return;
+                        }
+                    },
+                }
+            } else {
+                match symphonia::default::get_codecs()
+                    .make_audio_decoder(&audio_params, &AudioDecoderOptions::default())
+                {
+                    Ok(d) => d,
+                    Err(_) => match symphonia_adapter_libopus::OpusDecoder::try_registry_new(
+                        &audio_params,
+                        &AudioDecoderOptions::default(),
+                    ) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            tracing::error!(error = %e, "symphonia codec error");
+                            finish_natural(&state);
+                            return;
+                        }
+                    },
+                }
+            }
         };
 
         loop {

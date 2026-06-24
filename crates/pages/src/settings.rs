@@ -357,6 +357,12 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
         let is_soundcloud = selected_service == MusicService::SoundCloud;
         let is_browser_signin = selected_service.uses_browser_signin();
 
+        // Name is required — no silent "Local <Service>" fallback.
+        if server_name().trim().is_empty() {
+            error.set(Some(i18n::t("server_name_required").to_string()));
+            return;
+        }
+
         // Browser-sign-in backends (YT, SoundCloud) have no user-entered URL.
         if !is_browser_signin && !server_url().starts_with("http") {
             error.set(Some(i18n::t("invalid_server_url").to_string()));
@@ -371,11 +377,7 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
 
         spawn(
             async move {
-                let display_name = if name_input.is_empty() {
-                    format!("Local {}", selected_service.display_name())
-                } else {
-                    name_input
-                };
+                let display_name = name_input.trim().to_string();
 
                 let effective_url = if is_ytmusic {
                     "https://music.youtube.com".to_string()

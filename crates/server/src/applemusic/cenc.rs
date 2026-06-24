@@ -78,14 +78,12 @@ fn find_all_children(data: &[u8], body_start: usize, body_end: usize) -> Vec<(us
     result
 }
 
-// ── Track info ─────────────────────────────────────────────────────
+// Track info
 
 struct TrackInfo {
     track_id: u32,
     default_iv_size: u8,
 }
-
-// ── ExtractTrackInfo: read track info from init without modifying it ─
 
 fn extract_track_info(data: &[u8], init_end: usize) -> Result<(Vec<TrackInfo>, Vec<usize>), String> {
     let mut track_infos = Vec::new();
@@ -144,7 +142,7 @@ fn get_tenc_iv_size(data: &[u8], enca_body_start: usize, enca_body_end: usize) -
     16
 }
 
-// ── SENC parsing (matches mp4ff parseAndFillSamples exactly) ───────
+// SENC parsing
 
 fn parse_senc(iv_size: u8, sample_count: u32, raw_data: &[u8]) -> (Vec<[u8; 16]>, Vec<Vec<(u16, u32)>>) {
     if iv_size == 0 && sample_count == 0 {
@@ -202,9 +200,7 @@ fn try_parse_senc(iv_size: u8, sample_count: u32, raw_data: &[u8]) -> Option<(Ve
     Some((ivs, subs))
 }
 
-// ── CENC decryption (matches mp4ff CryptSampleCenc exactly) ────────
-// Go: stream.XORKeyStream only on protected bytes. Clear bytes just advance pos.
-// The CTR stream state is NOT advanced over clear bytes.
+// CENC decryption
 
 fn crypt_sample_cenc(sample: &mut [u8], key: &[u8], iv: &[u8; 16], subs: &[(u16, u32)]) {
     let mut cipher = Aes128Ctr::new(key.into(), iv.into());
@@ -221,8 +217,6 @@ fn crypt_sample_cenc(sample: &mut [u8], key: &[u8], iv: &[u8; 16], subs: &[(u16,
         }
     }
 }
-
-// ── Main decrypt function (matches mp4ff DecryptMP4 exactly) ───────
 
 pub fn decrypt_fmp4(data: &[u8], key: &[u8]) -> Result<Vec<u8>, String> {
     tracing::info!("am.decrypt: file={} bytes, key={} bytes", data.len(), key.len());
@@ -294,7 +288,7 @@ pub fn decrypt_fmp4(data: &[u8], key: &[u8]) -> Result<Vec<u8>, String> {
             let ti = ti.unwrap();
             let per_sample_iv_size = ti.default_iv_size;
 
-            // Parse senc (matches mp4ff: uses perSampleIVSize from tenc, then parseAndFillSamples)
+            // Parse senc
             let mut traf_ivs: Vec<[u8; 16]> = Vec::new();
             let mut traf_subs: Vec<Vec<(u16, u32)>> = Vec::new();
 
@@ -317,7 +311,7 @@ pub fn decrypt_fmp4(data: &[u8], key: &[u8]) -> Result<Vec<u8>, String> {
 
             if samples.is_empty() { continue; }
 
-            // Decrypt samples in-place (matches mp4ff decryptSamplesInPlace exactly)
+            // Decrypt samples in-place
             let mdat_body_len = mdat_total_size.saturating_sub(8) as usize;
             let mut decrypted = vec![0u8; mdat_body_len];
             let mdat_data_end = mdat_body_start + mdat_body_len;
@@ -329,7 +323,7 @@ pub fn decrypt_fmp4(data: &[u8], key: &[u8]) -> Result<Vec<u8>, String> {
                 let sz = sz as usize;
                 if sz == 0 { continue; }
 
-                // Match mp4ff: copy senc IV into 16-byte buffer (zero-pad if < 16)
+                // copy senc IV into 16-byte buffer (zero-pad if < 16)
                 if i < traf_ivs.len() {
                     iv = traf_ivs[i];
                 }
@@ -358,7 +352,7 @@ pub fn decrypt_fmp4(data: &[u8], key: &[u8]) -> Result<Vec<u8>, String> {
     Ok(output)
 }
 
-// ── Parse trun (matches mp4ff GetFullSamples) ──────────────────────
+// Parse trun
 
 fn parse_trun(data: &[u8], trun_bs: usize, trun_be: usize, tfhd: Option<(usize, usize, usize)>, moof_start_pos: u64, mdat_payload_offset: u64, _mdat_body_start: &usize, _mdat_total_size: usize) -> (usize, Vec<u32>) {
     if trun_bs + 8 > trun_be { return (0, vec![]); }
@@ -426,7 +420,6 @@ fn parse_trun(data: &[u8], trun_bs: usize, trun_be: usize, tfhd: Option<(usize, 
         }
     }
 
-    // Match mp4ff: baseOffset calculation
     // baseOffset = moofStartPos; if trun has dataOffset: baseOffset += dataOffset
     // offsetInMdat = baseOffset - mdatPayloadOffset
     let mut data_start: usize = 0;

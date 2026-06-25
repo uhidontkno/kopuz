@@ -76,8 +76,6 @@ const TAILWIND_CSS: Asset = asset!("../assets/tailwind.css");
 const REDUCED_ANIMATIONS_CSS: Asset = asset!("../assets/reduced-animations.css");
 #[cfg(target_os = "windows")]
 const TOOLBAR_ICONS: Asset = asset!("../assets/toolbar_icons", AssetOptions::folder());
-const QUEUE_STATE_SAVE_DEBOUNCE_MS: u64 = 1200;
-const QUEUE_STATE_PROGRESS_STEP_SECS: u64 = 5;
 /// Store saves (config/library/playlists/favorites) are full-replace and
 /// expensive; bursts of mutations (batch downloads, syncs) coalesce into one
 /// save per settle+cooldown window instead of one per mutation.
@@ -280,158 +278,6 @@ async fn run_rotation(mut config: Signal<config::AppConfig>) {
         Ok(None) => {}
         Err(e) => tracing::warn!(error = %e, "verify_session failed"),
     }
-}
-
-async fn persist_queue_state_snapshot(db: db::Db, queue_state: Option<PersistedQueueState>) {
-    let snap = queue_state.map(queue_snapshot).unwrap_or_default();
-    if let Err(e) = db.save_queue(&snap).await {
-        tracing::error!("Failed to save queue state: {}", e);
-    }
-}
-
-fn queue_snapshot(q: PersistedQueueState) -> db::QueueSnapshot {
-    db::QueueSnapshot {
-        version: q.version,
-        queue: q.queue,
-        current_queue_index: q.current_queue_index,
-        progress_secs: q.progress_secs,
-        shuffle_order: q.shuffle_order,
-        shuffle_enabled: q.shuffle_enabled,
-    }
-}
-
-fn is_server_queue_track(track: &reader::Track) -> bool {
-    matches!(
-        track
-            .id
-            .uid()
-            .split(':')
-            .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str(),
-        "jellyfin" | "subsonic" | "custom"
-    )
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn is_restorable_queue_track(track: &reader::Track) -> bool {
-    is_server_queue_track(track) || track.id.local_path().is_some_and(|p| p.exists())
-}
-
-#[cfg(target_arch = "wasm32")]
-fn is_restorable_queue_track(_track: &reader::Track) -> bool {
-    true
-}
-
-fn sanitize_queue_state(state: PersistedQueueState) -> Option<PersistedQueueState> {
-    if state.queue.is_empty() {
-        return None;
-    }
-
-    let original_index = state
-        .current_queue_index
-        .min(state.queue.len().saturating_sub(1));
-    let mut selected_track_survived = false;
-    let survivors: Vec<(usize, reader::Track)> = state
-        .queue
-        .into_iter()
-        .enumerate()
-        .filter(|(idx, track)| {
-            let keep = is_restorable_queue_track(track);
-            if keep && *idx == original_index {
-                selected_track_survived = true;
-            }
-            keep
-        })
-        .collect();
-
-    if survivors.is_empty() {
-        return None;
-    }
-
-    let restored_index = if selected_track_survived {
-        survivors
-            .iter()
-            .position(|(idx, _)| *idx == original_index)
-            .unwrap_or(0)
-    } else {
-        survivors
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, (idx, _))| (idx.abs_diff(original_index), *idx > original_index))
-            .map(|(restored_idx, _)| restored_idx)
-            .unwrap_or(0)
-    };
-
-    let old_queue_len = survivors
-        .iter()
-        .map(|(old_idx, _)| *old_idx)
-        .max()
-        .map_or(0, |m| m + 1);
-
-    let mut old_to_new_index: Vec<Option<usize>> = vec![None; old_queue_len];
-    for (new_idx, (old_idx, _)) in survivors.iter().enumerate() {
-        old_to_new_index[*old_idx] = Some(new_idx);
-    }
-
-    let shuffle_order: Vec<usize> = state
-        .shuffle_order
-        .into_iter()
-        .filter_map(|old_idx| old_to_new_index.get(old_idx).and_then(|&new_idx| new_idx))
-        .collect();
-
-    let queue: Vec<_> = survivors.into_iter().map(|(_, track)| track).collect();
-    let progress_secs = if selected_track_survived {
-        queue
-            .get(restored_index)
-            .map(|track| state.progress_secs.min(track.duration))
-            .unwrap_or(0)
-    } else {
-        0
-    };
-
-    Some(PersistedQueueState {
-        version: state.version,
-        queue,
-        current_queue_index: restored_index,
-        progress_secs,
-        shuffle_order,
-        shuffle_enabled: state.shuffle_enabled,
-    })
-}
-
-fn build_queue_state_snapshot(
-    queue: &[reader::Track],
-    current_queue_index: usize,
-    current_song_progress: u64,
-    is_playing: bool,
-    shuffle_order: &[usize],
-    shuffle_enabled: bool,
-) -> Option<PersistedQueueState> {
-    if queue.is_empty() {
-        return None;
-    }
-
-    let current_idx = current_queue_index.min(queue.len() - 1);
-    let progress_secs = queue
-        .get(current_idx)
-        .map(|track| current_song_progress.min(track.duration))
-        .unwrap_or(0);
-    let progress_secs = if is_playing {
-        progress_secs - (progress_secs % QUEUE_STATE_PROGRESS_STEP_SECS)
-    } else {
-        progress_secs
-    };
-
-    Some(PersistedQueueState {
-        version: 1,
-        queue: queue.to_vec(),
-        current_queue_index: current_idx,
-        progress_secs,
-        shuffle_order: shuffle_order.to_vec(),
-        shuffle_enabled,
-    })
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -1224,7 +1070,7 @@ fn App() -> Element {
                     pending_queue_state_snapshot
                         .peek()
                         .clone()
-                        .map(queue_snapshot)
+                        .map(queue_state::snapshot)
                         .unwrap_or_default()
                 });
                 // Library/playlists/favorites need no flush — every mutation
@@ -1720,7 +1566,7 @@ fn App() -> Element {
         let shuffle_order_snapshot = ctrl.shuffle_order.read().clone();
         let shuffle_enabled_snapshot = *ctrl.shuffle.read();
 
-        let queue_state = build_queue_state_snapshot(
+        let queue_state = queue_state::build_snapshot(
             &queue_snapshot,
             *current_queue_index.read(),
             *current_song_progress.read(),
@@ -1749,7 +1595,7 @@ fn App() -> Element {
                 }
 
                 utils::sleep(std::time::Duration::from_millis(
-                    QUEUE_STATE_SAVE_DEBOUNCE_MS,
+                    queue_state::SAVE_DEBOUNCE_MS,
                 ))
                 .await;
 
@@ -1759,7 +1605,7 @@ fn App() -> Element {
                 }
 
                 let snapshot = pending_queue_state_snapshot.read().clone();
-                persist_queue_state_snapshot(db.clone(), snapshot)
+                queue_state::persist_snapshot(db.clone(), snapshot)
                     .instrument(tracing::info_span!("queue.persist"))
                     .await;
                 flushed_revision = latest_revision;
@@ -1882,7 +1728,7 @@ fn App() -> Element {
                 // the user picks a server explicitly via the sidebar.
 
                 if let Some(snap) = queue_loaded
-                    && let Some(queue_state) = sanitize_queue_state(PersistedQueueState {
+                    && let Some(queue_state) = queue_state::sanitize(PersistedQueueState {
                         version: snap.version,
                         queue: snap.queue,
                         current_queue_index: snap.current_queue_index,

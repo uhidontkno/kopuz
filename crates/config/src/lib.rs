@@ -4,6 +4,9 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
+mod views;
+pub use views::{IntegrationConfig, LibraryConfig, PlaybackConfig, ServerAuth, UiConfig};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum FetchStrategy {
     #[default]
@@ -1064,7 +1067,7 @@ impl AppConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::AppConfig;
+    use super::{AppConfig, BackBehavior, Browser, MusicServer, ServerAuth};
     use std::path::PathBuf;
 
     #[test]
@@ -1089,6 +1092,45 @@ mod tests {
         assert_eq!(
             config.music_directory,
             vec![PathBuf::from("/music"), PathBuf::from("/archive")]
+        );
+    }
+
+    #[test]
+    fn playback_view_projects_playback_fields() {
+        let mut config = AppConfig {
+            volume: 0.4,
+            crossfade_seconds: 5,
+            back_behavior: BackBehavior::AlwaysPrev,
+            ..AppConfig::default()
+        };
+        config.equalizer.enabled = true;
+
+        let playback = config.playback();
+
+        assert_eq!(playback.volume, 0.4);
+        assert_eq!(playback.crossfade_seconds, 5);
+        assert_eq!(playback.back_behavior, BackBehavior::AlwaysPrev);
+        assert!(playback.equalizer.enabled);
+    }
+
+    #[test]
+    fn browser_signin_server_auth_is_typed() {
+        let mut server = MusicServer::new_with_service(
+            "yt".to_string(),
+            "https://music.youtube.com".to_string(),
+            super::MusicService::YtMusic,
+        );
+        server.yt_browser = Some(Browser::Brave);
+        server.yt_anonymous = true;
+
+        assert_eq!(
+            server.auth(),
+            ServerAuth::Browser {
+                browser: Some(Browser::Brave),
+                token: None,
+                user_id: None,
+                anonymous: true,
+            }
         );
     }
 }

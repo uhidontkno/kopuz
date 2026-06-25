@@ -3,15 +3,11 @@ use components::{
     fullscreen::Fullscreen, rightbar::Rightbar, sidebar::Sidebar, titlebar::Titlebar,
 };
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-use dioxus::desktop::RequestAsyncResponder;
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 use dioxus::desktop::tao::dpi::LogicalSize;
 #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
 use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
 use dioxus::desktop::tao::platform::windows::WindowExtWindows;
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-use dioxus::desktop::tao::window::Icon;
 use dioxus::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use discord_presence::Presence;
@@ -27,47 +23,20 @@ use tracing::Instrument;
 #[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
 use windows::Win32::Foundation::HWND;
 
+mod app_db;
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+mod artwork_protocol;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 mod chrome_trace;
+mod desktop_shell;
+mod legacy;
 mod logging;
 #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 mod pot_minter;
 mod queue_state;
+mod updates;
 #[cfg(target_os = "windows")]
 mod windows_titlebar;
-
-#[cfg(not(target_arch = "wasm32"))]
-fn migrate_legacy_locations() {
-    let Some(dirs) = directories::ProjectDirs::from("com", "temidaradev", "kopuz") else {
-        return;
-    };
-    let new_config = dirs.config_dir().to_path_buf();
-    let sentinel = new_config.join(".migrated");
-    if sentinel.exists() {
-        return;
-    }
-
-    let old_cache = dirs.cache_dir().to_path_buf();
-    let files = [
-        "library.json",
-        "playlists.json",
-        "favorites.json",
-        "queue_state.json",
-    ];
-    for file in files {
-        let src = old_cache.join(file);
-        let dst = new_config.join(file);
-        if src.exists() && !dst.exists() {
-            if let Err(e) = std::fs::rename(&src, &dst) {
-                tracing::warn!("Failed to migrate {file} from cache to config: {e}");
-            } else {
-                tracing::info!("Migrated {file} to config dir");
-            }
-        }
-    }
-
-    let _ = std::fs::write(&sentinel, "");
-}
 
 const FAVICON: Asset = asset!("../assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("../assets/main.css");
@@ -102,505 +71,6 @@ fn WindowsToolbarIconAssets() -> Element {
 #[cfg(not(target_arch = "wasm32"))]
 static PRESENCE: std::sync::OnceLock<Option<Arc<Presence>>> = std::sync::OnceLock::new();
 
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-fn build_window_icon() -> Option<Icon> {
-    let image = image::load_from_memory(include_bytes!("../assets/logo-512.png")).ok()?;
-    let image = image.into_rgba8();
-    let (width, height) = image.dimensions();
-    Icon::from_rgba(image.into_raw(), width, height).ok()
-}
-
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-fn build_tray_icon() -> Option<dioxus::desktop::trayicon::Icon> {
-    let image = image::load_from_memory(include_bytes!("../assets/logo-512.png")).ok()?;
-    let image = image.into_rgba8();
-    let (width, height) = image.dimensions();
-    dioxus::desktop::trayicon::Icon::from_rgba(image.into_raw(), width, height).ok()
-}
-
-#[cfg(target_os = "linux")]
-fn tray_backend_available() -> bool {
-    const CANDIDATES: &[&str] = &[
-        "libayatana-appindicator3.so.1",
-        "libappindicator3.so.1",
-        "libayatana-appindicator3.so",
-        "libappindicator3.so",
-    ];
-    CANDIDATES
-        .iter()
-        .any(|name| unsafe { libloading::Library::new(name) }.is_ok())
-}
-
-#[cfg(all(
-    not(target_arch = "wasm32"),
-    not(target_os = "android"),
-    not(target_os = "linux")
-))]
-fn tray_backend_available() -> bool {
-    true
-}
-
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-fn show_tray_missing_popup() {
-    let msg = "System tray unavailable: appindicator library not found. \
-               Install libayatana-appindicator (Debian/Ubuntu/Arch) or \
-               libappindicator-gtk3 (Fedora). Closing the window will quit \
-               the app instead of minimizing to tray.";
-    let escaped = serde_json::to_string(msg).unwrap_or_else(|_| "\"\"".to_string());
-    let js = format!(
-        r#"(function(m){{
-            let t = document.getElementById('kopuz-tray-popup');
-            if (!t) {{
-                t = document.createElement('div');
-                t.id = 'kopuz-tray-popup';
-                t.style.cssText = 'position:fixed;right:16px;top:16px;max-width:360px;background:rgba(28,28,30,0.97);color:#fff;padding:14px 16px;border-radius:10px;font:13px/1.45 system-ui,sans-serif;z-index:99999;box-shadow:0 8px 28px rgba(0,0,0,0.5);border:1px solid rgba(255,170,60,0.45);opacity:0;transition:opacity 200ms;';
-                t.onclick = () => {{ t.style.opacity = '0'; }};
-                document.body.appendChild(t);
-            }}
-            t.innerHTML = '<div style="font-weight:600;margin-bottom:4px;color:#ffb347;">Tray icon unavailable</div>' + m;
-            requestAnimationFrame(() => {{ t.style.opacity = '1'; }});
-            clearTimeout(t._h);
-            t._h = setTimeout(() => {{ t.style.opacity = '0'; }}, 8000);
-        }})({escaped});"#
-    );
-    let _ = dioxus::document::eval(&js);
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct AvailableUpdate {
-    version: String,
-    release_url: String,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(serde::Deserialize)]
-struct GithubRelease {
-    tag_name: String,
-    html_url: String,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
-    let core = version
-        .trim()
-        .trim_start_matches(['v', 'V'])
-        .split(['-', '+'])
-        .next()
-        .unwrap_or_default();
-    let parts: Option<Vec<u64>> = core
-        .split('.')
-        .map(|part| part.parse::<u64>().ok())
-        .collect();
-    parts.filter(|parts| !parts.is_empty())
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn is_newer_version(current: &str, candidate: &str) -> bool {
-    let Some(current_parts) = parse_version_parts(current) else {
-        return false;
-    };
-    let Some(candidate_parts) = parse_version_parts(candidate) else {
-        return false;
-    };
-
-    let max_len = current_parts.len().max(candidate_parts.len());
-    for idx in 0..max_len {
-        let current_part = *current_parts.get(idx).unwrap_or(&0);
-        let candidate_part = *candidate_parts.get(idx).unwrap_or(&0);
-        match candidate_part.cmp(&current_part) {
-            std::cmp::Ordering::Greater => return true,
-            std::cmp::Ordering::Less => return false,
-            std::cmp::Ordering::Equal => {}
-        }
-    }
-
-    false
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-async fn fetch_available_update() -> Option<AvailableUpdate> {
-    let client = reqwest::Client::builder()
-        .user_agent(format!("kopuz/{}", env!("CARGO_PKG_VERSION")))
-        .timeout(std::time::Duration::from_secs(8))
-        .build()
-        .ok()?;
-    let release = client
-        .get("https://api.github.com/repos/Kopuz-org/kopuz/releases/latest")
-        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .send()
-        .await
-        .ok()?
-        .error_for_status()
-        .ok()?
-        .json::<GithubRelease>()
-        .await
-        .ok()?;
-
-    if is_newer_version(env!("CARGO_PKG_VERSION"), &release.tag_name) {
-        Some(AvailableUpdate {
-            version: release.tag_name.trim_start_matches(['v', 'V']).to_string(),
-            release_url: release.html_url,
-        })
-    } else {
-        None
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-async fn run_rotation(mut config: Signal<config::AppConfig>) {
-    let cookies = match config.peek().server.as_ref() {
-        Some(s) if s.service == config::MusicService::YtMusic => s.access_token.clone(),
-        _ => return,
-    };
-    let Some(cookies) = cookies else { return };
-    // Anonymous YT carries an empty token — nothing to keep alive.
-    if cookies.is_empty() {
-        return;
-    }
-    let started = std::time::Instant::now();
-    // Logging policy: noisy in the rare cases (jar rotated, error),
-    // silent on the steady-state OK-no-change tick. The keepalive
-    // fires every 5 min and 99% of ticks are no-change; the original
-    // per-tick OK line drowned stderr.
-    match server::ytmusic::verify_session_keepalive::tick(&cookies).await {
-        Ok(Some(updated)) => {
-            tracing::debug!(
-                secs = started.elapsed().as_secs_f32(),
-                from = cookies.len(),
-                to = updated.len(),
-                "verify_session OK — jar rotated",
-            );
-            if let Some(srv) = config.write().server.as_mut() {
-                srv.access_token = Some(updated);
-            }
-        }
-        Ok(None) => {}
-        Err(e) => tracing::warn!(error = %e, "verify_session failed"),
-    }
-}
-
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-fn read_titlebar_mode_from_disk() -> config::TitlebarMode {
-    db::peek_config(&db::default_db_path())
-        .map(|c| c.titlebar_mode)
-        .unwrap_or_default()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn thumb_cache_path(file_path: &str) -> std::path::PathBuf {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    file_path.hash(&mut hasher);
-    let hash = hasher.finish();
-    std::env::temp_dir().join(format!("rusic_thumb_{:016x}.jpg", hash))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn hq_cache_path(file_path: &str) -> std::path::PathBuf {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    "hq".hash(&mut hasher);
-    file_path.hash(&mut hasher);
-    let hash = hasher.finish();
-    std::env::temp_dir().join(format!("rusic_hq_{:016x}.jpg", hash))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn make_thumbnail(raw: &[u8], cache_path: &std::path::Path) -> Option<Vec<u8>> {
-    use image::codecs::jpeg::JpegEncoder;
-    let img = image::load_from_memory(raw).ok()?;
-    const MAX: u32 = 400;
-    let img = if img.width() > MAX || img.height() > MAX {
-        img.thumbnail(MAX, MAX)
-    } else {
-        img
-    };
-    let mut out: Vec<u8> = Vec::new();
-    img.write_with_encoder(JpegEncoder::new_with_quality(&mut out, 75))
-        .ok()?;
-    let _ = std::fs::write(cache_path, &out);
-    Some(out)
-}
-
-// Returns Some(compressed) when the image exceeded the size/dimension limit,
-// or None when the original is already small enough to serve as-is.
-#[cfg(not(target_arch = "wasm32"))]
-fn make_hq_image(raw: &[u8], cache_path: &std::path::Path) -> Option<Vec<u8>> {
-    use image::codecs::jpeg::JpegEncoder;
-    const SIZE_LIMIT: usize = 2 * 1024 * 1024; // 2 MB
-    const MAX_DIM: u32 = 1920;
-    const QUALITY: u8 = 85;
-
-    if raw.len() <= SIZE_LIMIT {
-        return None;
-    }
-    let img = image::load_from_memory(raw).ok()?;
-    let img = if img.width() > MAX_DIM || img.height() > MAX_DIM {
-        img.thumbnail(MAX_DIM, MAX_DIM)
-    } else {
-        img
-    };
-    let mut out: Vec<u8> = Vec::new();
-    img.write_with_encoder(JpegEncoder::new_with_quality(&mut out, QUALITY))
-        .ok()?;
-    let _ = std::fs::write(cache_path, &out);
-    Some(out)
-}
-
-/// Process-wide database handle. Opened (and the legacy JSON migrated) once in
-/// `main` before the UI mounts, then provided to the app via context.
-static DB_HANDLE: std::sync::OnceLock<db::Db> = std::sync::OnceLock::new();
-
-/// Open the DB and run the one-shot legacy import, blocking. sqlx-sqlite does its
-/// work on dedicated connection threads, so the throwaway runtime here is safe to
-/// drop — the pool keeps working under the app's runtime afterwards.
-#[cfg(not(target_arch = "wasm32"))]
-fn init_db_blocking() -> db::Db {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("tokio runtime for db init");
-    rt.block_on(async {
-        let db_path = db::default_db_path();
-        let handle = match db::init(&db_path).await {
-            Ok(h) => h,
-            Err(e) => {
-                // A corrupt DB must not brick the app before a window exists:
-                // move it aside (kept for inspection) and recreate — the
-                // importer below repopulates from *.json.bak. ONLY for real
-                // corruption, though: lock contention (a second instance),
-                // disk-full, or a failed migration would otherwise get a
-                // healthy database renamed away and replaced by stale data.
-                let msg = e.to_string().to_lowercase();
-                let is_corruption = msg.contains("malformed")
-                    || msg.contains("not a database")
-                    || msg.contains("corrupt");
-                if !is_corruption {
-                    panic!("kopuz database failed to open (not corruption — refusing to discard it): {e}");
-                }
-                tracing::error!(error = %e, "kopuz database is corrupt — moving it aside and recreating");
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                for ext in ["", "-wal", "-shm"] {
-                    let mut src = db_path.as_os_str().to_os_string();
-                    src.push(ext);
-                    let mut dst = db_path.as_os_str().to_os_string();
-                    dst.push(format!(".corrupt-{ts}{ext}"));
-                    let _ = std::fs::rename(src, dst);
-                }
-                db::init(&db_path).await.expect("recreate kopuz database")
-            }
-        };
-        match handle.import_legacy_json(&db::config_dir()).await {
-            Ok(r) if r.ran => tracing::info!(
-                tracks = r.tracks,
-                albums = r.albums,
-                playlists = r.playlists,
-                favorites = r.favorites,
-                servers = r.servers,
-                "kopuz: migrated legacy JSON store into SQLite"
-            ),
-            Ok(_) => {}
-            Err(e) => tracing::error!(error = %e, "kopuz: legacy JSON import failed"),
-        }
-        // Nothing reads or writes the legacy JSONs anymore — move them aside as
-        // *.json.bak (kept for downgrade; never deleted). RELEASE only: debug
-        // builds leave them in place so deleting kopuz-debug.db re-tests the
-        // migration without restoring anything (the import is gated on the DB
-        // being empty, so the lingering JSONs are otherwise inert).
-        if cfg!(debug_assertions) {
-            tracing::info!("kopuz: debug build — leaving legacy *.json in place for re-testing");
-        } else {
-            match handle.finalize_migration(&db::config_dir()).await {
-                Ok(n) if n > 0 => {
-                    tracing::info!(files = n, "kopuz: legacy *.json renamed to *.json.bak")
-                }
-                Ok(_) => {}
-                Err(e) => tracing::warn!(error = %e, "kopuz: legacy json backup rename failed"),
-            }
-        }
-        server::ytmusic::player::init_tier_store(handle.clone());
-        utils::db_cache::init(handle.clone());
-        handle
-    })
-}
-
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-fn serve_artwork(uri: http::Uri, responder: RequestAsyncResponder) {
-    fn resp(
-        status: u16,
-        headers: &[(&str, &str)],
-        body: Vec<u8>,
-    ) -> http::Response<std::borrow::Cow<'static, [u8]>> {
-        let mut b = http::Response::builder().status(status);
-        b = b.header("Access-Control-Allow-Origin", "*");
-        for (k, v) in headers {
-            b = b.header(*k, *v);
-        }
-        b.body(std::borrow::Cow::from(body)).unwrap_or_else(|_| {
-            http::Response::builder()
-                .status(500)
-                .header("Access-Control-Allow-Origin", "*")
-                .body(std::borrow::Cow::from(Vec::new()))
-                .expect("static fallback response")
-        })
-    }
-
-    tokio::spawn(
-        async move {
-            let query = uri.query().unwrap_or_default();
-            let file_path: String = query
-                .split('&')
-                .find_map(|kv| kv.strip_prefix("p="))
-                .map(|encoded| {
-                    percent_encoding::percent_decode_str(encoded)
-                        .decode_utf8_lossy()
-                        .into_owned()
-                })
-                .unwrap_or_default();
-            let high_quality = query.split('&').any(|kv| kv == "hq=1");
-
-            if file_path.is_empty() {
-                responder.respond(resp(400, &[], Vec::new()));
-                return;
-            }
-
-            #[cfg(target_os = "windows")]
-            let file_path = file_path.replace('/', "\\");
-
-            #[cfg(not(target_os = "windows"))]
-            let file_path = if file_path.starts_with('~') {
-                if let Ok(home) = std::env::var("HOME") {
-                    file_path.replacen('~', &home, 1)
-                } else {
-                    file_path
-                }
-            } else {
-                file_path
-            };
-
-            if high_quality {
-                let hq_path = hq_cache_path(&file_path);
-                if hq_path.exists()
-                    && let Ok(b) = tokio::fs::read(&hq_path).await
-                {
-                    responder.respond(resp(
-                        200,
-                        &[
-                            ("Content-Type", "image/jpeg"),
-                            ("Cache-Control", "public, max-age=31536000"),
-                        ],
-                        b,
-                    ));
-                    return;
-                }
-                match tokio::fs::read(&file_path).await {
-                    Ok(raw) => {
-                        let file_path_clone = file_path.clone();
-                        let result = tokio::task::spawn_blocking(move || {
-                            make_hq_image(&raw, &hq_path)
-                                .map(|b| (b, "image/jpeg"))
-                                .unwrap_or_else(|| {
-                                    let mime = if file_path_clone.ends_with(".png") {
-                                        "image/png"
-                                    } else {
-                                        "image/jpeg"
-                                    };
-                                    (raw, mime)
-                                })
-                        })
-                        .await;
-                        match result {
-                            Ok((bytes, mime)) => responder.respond(resp(
-                                200,
-                                &[
-                                    ("Content-Type", mime),
-                                    ("Cache-Control", "public, max-age=31536000"),
-                                ],
-                                bytes,
-                            )),
-                            Err(_) => responder.respond(resp(500, &[], Vec::new())),
-                        }
-                    }
-                    Err(_) => responder.respond(resp(404, &[], Vec::new())),
-                }
-                return;
-            }
-
-            let thumb_path = thumb_cache_path(&file_path);
-
-            let (bytes, mime) = if thumb_path.exists() {
-                match tokio::fs::read(&thumb_path).await {
-                    Ok(b) => (b, "image/jpeg"),
-                    Err(_) => {
-                        let _ = std::fs::remove_file(&thumb_path);
-                        match tokio::fs::read(&file_path).await {
-                            Ok(b) => (
-                                b,
-                                if file_path.ends_with(".png") {
-                                    "image/png"
-                                } else {
-                                    "image/jpeg"
-                                },
-                            ),
-                            Err(_) => {
-                                responder.respond(resp(404, &[], Vec::new()));
-                                return;
-                            }
-                        }
-                    }
-                }
-            } else {
-                match tokio::fs::read(&file_path).await {
-                    Ok(raw) => {
-                        let thumb_path_clone = thumb_path.clone();
-                        match tokio::task::spawn_blocking(move || {
-                            match make_thumbnail(&raw, &thumb_path_clone) {
-                                Some(b) => Ok(b),
-                                None => Err(raw),
-                            }
-                        })
-                        .await
-                        {
-                            Ok(Ok(b)) => (b, "image/jpeg"),
-                            Ok(Err(raw)) => (
-                                raw,
-                                if file_path.ends_with(".png") {
-                                    "image/png"
-                                } else {
-                                    "image/jpeg"
-                                },
-                            ),
-                            Err(_) => {
-                                responder.respond(resp(500, &[], Vec::new()));
-                                return;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("[artwork] not found {}: {}", file_path, e);
-                        responder.respond(resp(404, &[], Vec::new()));
-                        return;
-                    }
-                }
-            };
-
-            responder.respond(resp(
-                200,
-                &[
-                    ("Content-Type", mime),
-                    ("Cache-Control", "public, max-age=31536000"),
-                ],
-                bytes,
-            ));
-        }
-        .instrument(tracing::info_span!("artwork.serve")),
-    );
-}
-
 fn main() {
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
     {
@@ -620,9 +90,9 @@ fn main() {
         // logging::shutdown() after launch returns or on Ctrl+C.
         logging::init(&log_dir, config_tracing_enabled);
 
-        migrate_legacy_locations();
+        legacy::migrate_locations();
 
-        let _ = DB_HANDLE.set(init_db_blocking());
+        let _ = app_db::DB_HANDLE.set(app_db::init_blocking());
 
         let presence: Option<Arc<Presence>> = match Presence::new("1470087339639443658") {
             Ok(p) => {
@@ -647,7 +117,7 @@ fn main() {
             .with_resizable(true)
             .with_inner_size(LogicalSize::new(1350.0, 800.0));
 
-        if let Some(icon) = build_window_icon() {
+        if let Some(icon) = desktop_shell::build_window_icon() {
             window = window.with_window_icon(Some(icon));
         }
 
@@ -661,7 +131,7 @@ fn main() {
 
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         {
-            let initial_titlebar_mode = read_titlebar_mode_from_disk();
+            let initial_titlebar_mode = desktop_shell::read_titlebar_mode_from_disk();
             window = window.with_decorations(initial_titlebar_mode == config::TitlebarMode::System);
         }
 
@@ -686,8 +156,8 @@ fn main() {
             })
             .with_asynchronous_custom_protocol(
                 "artwork",
-                |_id, request, responder: RequestAsyncResponder| {
-                    serve_artwork(request.uri().clone(), responder);
+                |_id, request, responder: dioxus::desktop::RequestAsyncResponder| {
+                    artwork_protocol::serve(request.uri().clone(), responder);
                 },
             );
 
@@ -741,7 +211,7 @@ fn main() {
         // OnceLock), but doing it up front means the session exists before first playback.
         player::systemint::init();
 
-        let _ = DB_HANDLE.set(init_db_blocking());
+        let _ = app_db::DB_HANDLE.set(app_db::init_blocking());
 
         let config = dioxus::mobile::Config::new()
             .with_background_color((0, 0, 0, 255))
@@ -825,7 +295,7 @@ fn main() {
 
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = DB_HANDLE.set(db::init_stub());
+        let _ = app_db::DB_HANDLE.set(db::init_stub());
         dioxus::launch(App);
     }
 }
@@ -928,7 +398,7 @@ fn App() -> Element {
     // these after the spawning page — and in principle this component — is
     // gone; owning them at ROOT keeps Dioxus's cross-scope lint honest.
     let mut config = use_hook(|| Signal::new_in_scope(config::AppConfig::default(), ScopeId::ROOT));
-    let db = DB_HANDLE
+    let db = app_db::DB_HANDLE
         .get()
         .cloned()
         .expect("db initialized in main before launch");
@@ -1060,7 +530,7 @@ fn App() -> Element {
                     ..
                 }
         ) {
-            if let Some(db) = DB_HANDLE.get() {
+            if let Some(db) = app_db::DB_HANDLE.get() {
                 let db = db.clone();
                 // None = the queue is empty (a cleared queue must persist as
                 // empty, not resurrect) — but only once the saved queue has
@@ -1246,7 +716,7 @@ fn App() -> Element {
 
     let mut network_banner: Signal<Option<bool>> = use_signal(|| None);
     #[cfg(not(target_arch = "wasm32"))]
-    let mut update_banner: Signal<Option<AvailableUpdate>> = use_signal(|| None);
+    let mut update_banner: Signal<Option<updates::AvailableUpdate>> = use_signal(|| None);
     #[cfg(not(target_arch = "wasm32"))]
     let mut did_check_updates = use_signal(|| false);
     let mut ctrl = hooks::use_player_controller(
@@ -1327,7 +797,7 @@ fn App() -> Element {
         did_check_updates.set(true);
         spawn(
             async move {
-                if let Some(update) = fetch_available_update().await {
+                if let Some(update) = updates::fetch_available().await {
                     update_banner.set(Some(update));
                 }
             }
@@ -1423,13 +893,13 @@ fn App() -> Element {
             return;
         };
         spawn(async move {
-            run_rotation(config).await;
+            updates::run_rotation(config).await;
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                 if yt_keepalive_identity.peek().as_deref() != Some(my_identity.as_str()) {
                     return;
                 }
-                run_rotation(config).await;
+                updates::run_rotation(config).await;
             }
         });
     });
@@ -1502,7 +972,7 @@ fn App() -> Element {
             move || {
                 use dioxus::desktop::trayicon::TrayIconBuilder;
                 let want_tray = config.read().minimize_to_tray;
-                let enabled = want_tray && tray_backend_available();
+                let enabled = want_tray && desktop_shell::tray_backend_available();
                 let mut warned = tray_warned.borrow_mut();
                 if want_tray && !enabled {
                     tracing::error!(
@@ -1513,7 +983,7 @@ fn App() -> Element {
                          Closing the window will quit the app instead of hiding to tray."
                     );
                     if !*warned {
-                        show_tray_missing_popup();
+                        desktop_shell::show_tray_missing_popup();
                         *warned = true;
                     }
                 } else {
@@ -1542,7 +1012,7 @@ fn App() -> Element {
                             .with_tooltip("Kopuz")
                             .with_menu(Box::new(menu))
                             .with_menu_on_left_click(false);
-                        if let Some(icon) = build_tray_icon() {
+                        if let Some(icon) = desktop_shell::build_tray_icon() {
                             builder = builder.with_icon(icon);
                         }
                         match builder.build() {

@@ -644,4 +644,104 @@ impl AppleMusicApi {
             Err(format!("HTTP {status}"))
         }
     }
+    /// Resolve a library ID (starts with `i.`) to its catalog Adam ID.
+    /// Returns the ID unchanged if it's already numeric.
+    pub async fn resolve_catalog_id(&self, id: &str) -> Result<String, String> {
+        // Catalog IDs are numeric — library IDs contain ".".
+        if id.chars().all(|c| c.is_ascii_digit()) {
+            return Ok(id.to_string());
+        }
+
+        tracing::debug!("am.resolve_catalog_id: resolving library id {id}");
+        let path = format!("/v1/me/library/songs/{id}/catalog?l={}", self.language);
+        let resp = self.get(&path).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            tracing::warn!(
+                "am.resolve_catalog_id: catalog resolve failed ({status}) for {id}, \
+                 library song may not have a catalog equivalent"
+            );
+            return Ok(id.to_string());
+        }
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("parse catalog response: {e}"))?;
+
+        if let Some(data) = body["data"].as_array() {
+            if let Some(first) = data.first() {
+                if let Some(catalog_id) = first["id"].as_str() {
+                    tracing::debug!("am.resolve_catalog_id: {id} → {catalog_id}");
+                    return Ok(catalog_id.to_string());
+                }
+            }
+        }
+
+        tracing::warn!("am.resolve_catalog_id: no catalog id found for {id}");
+        Ok(id.to_string())
+    }
+
+    /// Fetch timed lyrics (TTML) for a song.
+    /// Tries `syllable-lyrics` first (word-level timing), falls back to
+    /// `lyrics` (line-level). Handles both catalog IDs and library IDs.
+    pub async fn get_lyrics(&self, id: &str) -> Result<String, String> {
+        let media_token = self
+            .media_user_token
+            .as_deref()
+            .ok_or("media-user-token not set")?;
+        if media_token.len() < 50 {
+            return Err("media-user-token too short".into());
+        }
+
+        // Resolve library IDs to catalog IDs — lyrics API only works with catalog IDs.
+        let catalog_id = self.resolve_catalog_id(id).await?;
+
+        // Try syllable-lyrics first (word-level timing, quality 2).
+        for lrc_type in &["syllable-lyrics", "lyrics"] {
+            let path = format!(
+                "/v1/catalog/{}/songs/{}/{lrc_type}?l={}&extend=ttmlLocalizations",
+                self.storefront, catalog_id, self.language
+            );
+            match self.get(&path).await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if !status.is_success() {
+                        tracing::debug!(
+                            "am.get_lyrics: {lrc_type} → {status} for {catalog_id}"
+                        );
+                        continue;
+                    }
+                    let body = resp
+                        .text()
+                        .await
+                        .map_err(|e| format!("read lyrics body: {e}"))?;
+                    let parsed: SongLyricsResponse = serde_json::from_str(&body)
+                        .map_err(|e| format!("parse lyrics response: {e}"))?;
+                    if let Some(data) = parsed.data.first() {
+                        let ttml = if !data.attributes.ttml.is_empty() {
+                            &data.attributes.ttml
+                        } else {
+                            &data.attributes.ttml_localizations
+                        };
+                        if !ttml.is_empty() {
+                            tracing::debug!(
+                                "am.get_lyrics: got {lrc_type} for {catalog_id} ({} bytes)",
+                                ttml.len()
+                            );
+                            return Ok(ttml.clone());
+                        }
+                    }
+                    tracing::debug!(
+                        "am.get_lyrics: {lrc_type} empty for {catalog_id}"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("am.get_lyrics: {lrc_type} error for {catalog_id}: {e}");
+                }
+            }
+        }
+        Err("no lyrics available".into())
+    }
+
 }

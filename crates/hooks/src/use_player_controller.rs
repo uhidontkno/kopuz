@@ -632,6 +632,15 @@ impl PlayerController {
                     self.is_loading.set(true);
 
                     let is_radio = PlaybackItemRef::parse(&track.id.uid()).is_radio();
+                    // Extract Apple Music storefront/language for the stream resolver.
+                    let (am_storefront, am_language) = {
+                        let conf = self.config.read();
+                        conf.server
+                            .as_ref()
+                            .filter(|s| s.service == MusicService::AppleMusic)
+                            .map(|s| (s.apple_music_storefront.clone(), s.apple_music_language.clone()))
+                            .unwrap_or_else(|| ("us".into(), "en".into()))
+                    };
 
                     #[cfg(not(target_arch = "wasm32"))]
                     spawn(async move {
@@ -777,7 +786,7 @@ impl PlayerController {
                                 let rt = tokio::runtime::Handle::current();
                                 let bytes = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                     rt.block_on(async move {
-                                        server::applemusic::stream::resolve_and_decrypt(&adam_id, &token).await
+                                        server::applemusic::stream::resolve_and_decrypt(&adam_id, &token, &am_storefront, &am_language).await
                                     })
                                 }))
                                 .unwrap_or_else(|panic| {

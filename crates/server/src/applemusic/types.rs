@@ -523,3 +523,31 @@ pub struct WebPlaybackAsset {
     #[serde(rename = "URL")]
     pub url: String,
 }
+
+// ── Lyrics types ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SongLyricsResponse {
+    #[serde(default)]
+    pub data: Vec<SongLyricsData>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SongLyricsData {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    #[serde(rename = "type")]
+    pub data_type: String,
+    #[serde(default)]
+    pub attributes: SongLyricsAttributes,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SongLyricsAttributes {
+    #[serde(default)]
+    pub ttml: String,
+    #[serde(default)]
+    #[serde(rename = "ttmlLocalizations")]
+    pub ttml_localizations: String,
+}

@@ -283,71 +283,22 @@ async fn get_content_key(
     Err("no content key found in license response".to_string())
 }
 
-/// If the id looks like a library id (contains "."), resolve it to a catalog Adam id.
-/// Library ids like "i.xxx" are not valid for web playback — only numeric Adam ids work.
-async fn resolve_adam_id(
-    item_id: &str,
-    bearer_token: &str,
-    media_user_token: &str,
-) -> Result<String, String> {
-    if item_id.chars().all(|c| c.is_ascii_digit()) {
-        return Ok(item_id.to_string());
-    }
-
-    tracing::info!("am.stream: resolving library id {item_id} to catalog Adam id");
-
-    let client = reqwest::Client::new();
-    let url = format!(
-        "https://amp-api.music.apple.com/v1/me/library/songs/{}/catalog?l=en",
-        item_id
-    );
-    let resp = client
-        .get(&url)
-        .header("Authorization", format!("Bearer {bearer_token}"))
-        .header("User-Agent", USER_AGENT)
-        .header("Origin", "https://music.apple.com")
-        .header("Referer", "https://music.apple.com/")
-        .header("x-apple-music-user-token", media_user_token)
-        .header("Cookie", format!("media-user-token={media_user_token}"))
-        .send()
-        .await
-        .map_err(|e| format!("resolve catalog id: {e}"))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        tracing::warn!(
-            "am.stream: catalog resolve failed ({status}), library song may not have a catalog equivalent"
-        );
-        return Err(format!(
-            "library song {} has no catalog equivalent (HTTP {status})",
-            item_id
-        ));
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("parse catalog response: {e}"))?;
-
-    if let Some(data) = body["data"].as_array() {
-        if let Some(first) = data.first() {
-            if let Some(id) = first["id"].as_str() {
-                tracing::info!("am.stream: resolved to catalog Adam id {id}");
-                return Ok(id.to_string());
-            }
-        }
-    }
-
-    tracing::warn!("am.stream: no catalog id found in response");
-    Ok(item_id.to_string())
-}
 
 /// Full pipeline: resolve + download + decrypt. Returns decrypted fMP4 bytes.
-pub async fn resolve_and_decrypt(adam_id: &str, media_user_token: &str) -> Result<Vec<u8>, String> {
+pub async fn resolve_and_decrypt(
+    adam_id: &str,
+    media_user_token: &str,
+    storefront: &str,
+    language: &str,
+) -> Result<Vec<u8>, String> {
     let bearer_token = auth::get_bearer_token().await?;
-
     // Resolve the id to a catalog Adam id if needed (library ids don't work with web playback)
-    let adam_id = resolve_adam_id(adam_id, &bearer_token, media_user_token).await?;
+    let api = crate::applemusic::AppleMusicApi::new(
+        Some(media_user_token.to_string()),
+        storefront,
+        language,
+    );
+    let adam_id = api.resolve_catalog_id(adam_id).await?;
 
     tracing::info!("am.stream: resolving web playback for adam_id={adam_id}");
 

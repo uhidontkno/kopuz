@@ -37,6 +37,7 @@ reader = { workspace = true }
 db = { workspace = true }
 utils = { workspace = true }
 async-trait = { workspace = true }
+quick-xml = { workspace = true }
 urlencoding = "2.1"
 regex = "1"
 rsa = "0.9"

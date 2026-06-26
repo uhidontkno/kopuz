@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use config::Browser;
 
-use crate::ytmusic::isolated_profile as ip;
+use crate::cookies::browser as ip;
 
 const SIGNIN_URL: &str = "https://music.apple.com/signin";
 const COOKIE_DOMAIN: &str = "music.apple.com";

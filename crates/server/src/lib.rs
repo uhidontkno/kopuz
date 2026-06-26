@@ -2,6 +2,7 @@
 //! YouTube Music, and the local download queue manager.
 
 pub mod applemusic;
+pub mod cookies;
 pub mod cover;
 pub mod download_queue;
 pub mod jellyfin;

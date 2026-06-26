@@ -75,6 +75,20 @@ fn WindowsToolbarIconAssets() -> Element {
     rsx! {}
 }
 
+#[component]
+fn StaticHeadAssets() -> Element {
+    rsx! {
+        document::Link { rel: "icon", href: FAVICON }
+        document::Style { {MAIN_CSS} }
+        document::Style { {THEME_CSS} }
+        document::Style { {TAILWIND_CSS} }
+        document::Style { {REDUCED_ANIMATIONS_CSS} }
+        // fonts
+        document::Style { {JETBRAINS_MONO_CSS} }
+        document::Style { {FONT_AWESOME_CSS} }
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 static PRESENCE: std::sync::OnceLock<Option<Arc<Presence>>> = std::sync::OnceLock::new();
 
@@ -1537,19 +1551,9 @@ fn App() -> Element {
     let switch_source = hooks::source_switch::use_switch_source();
 
     rsx! {
-        document::Link { rel: "icon", href: FAVICON }
-        document::Style { {MAIN_CSS} }
-        document::Style { {THEME_CSS} }
-        document::Style { {TAILWIND_CSS} }
-        document::Style { {REDUCED_ANIMATIONS_CSS} }
+        // we use this component here to prevent re-diffing to prevent warns in console
+        StaticHeadAssets {}
         WindowsToolbarIconAssets {}
-        // Fonts are vendored offline (scripts/vendor-fonts.nu) and the
-        // woff2 are inlined as data: URIs by build.rs, so they load with a bare
-        // `cargo run` on any OS with no CDN dependency at runtime. Inlined as
-        // Style rather than a Script so they're re-render-safe (a Script warns
-        // "Changing the props of Script {} is not supported" on every re-render).
-        document::Style { {JETBRAINS_MONO_CSS} }
-        document::Style { {FONT_AWESOME_CSS} }
 
         div {
             class: "flex flex-col h-screen text-white select-none overflow-x-hidden {theme_class}",

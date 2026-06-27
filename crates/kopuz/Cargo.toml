@@ -14,7 +14,7 @@ workspace = true
 
 [package.metadata.bundle]
 identifier = "com.temidaradev.kopuz"
-icon = ["assets/app.ico", "assets/logo.png"]
+icon = ["assets/icon.icns", "assets/app.ico", "assets/logo.png"]
 category = "public.app-category.music"
 
 [package.metadata.bundle.macos]

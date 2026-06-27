@@ -204,13 +204,6 @@ yay -S kopuz-bin
 paru -S kopuz-bin
 ```
 
-> **Note:** `dioxus-cli` must be installed first at the version matching dioxus
-> 0.7.x:
->
-> ```bash
-> cargo install dioxus-cli --version "^0.7"
-> ```
-
 ### Flatpak (Recommended)
 
 Kopuz is soon available on Flathub. To install from source manifest:

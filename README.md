@@ -199,9 +199,9 @@ in {
 Install from the AUR using your preferred helper:
 
 ```bash
-yay -S kopuz
+yay -S kopuz-bin
 # or
-paru -S kopuz
+paru -S kopuz-bin
 ```
 
 > **Note:** `dioxus-cli` must be installed first at the version matching dioxus

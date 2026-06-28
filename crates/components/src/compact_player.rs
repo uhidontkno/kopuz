@@ -11,7 +11,7 @@ use crate::shared::fmt_time;
 pub struct CompactMode(pub Signal<bool>);
 
 /// Style-dependent classes so the mini player visually relates to the active
-/// UI style (Normal vs Vaxry / "Vaxry"), mirroring how the bottom bar splits.
+/// UI style (Normal vs Vaxry), mirroring how the bottom bar splits.
 struct CompactSkin {
     container: &'static str,
     title: &'static str,

@@ -279,7 +279,7 @@ pub fn FavoritesBody(
 
     let displayed_tracks_for_selection = sorted_displayed_tracks.clone();
     let is_empty = displayed_tracks.is_empty();
-    let is_modern = config.read().ui_style == UiStyle::Modern;
+    let is_vaxry = config.read().ui_style == UiStyle::Vaxry;
 
     // Window the rows: only the visible slice (plus buffer) exists in the
     // DOM — the full 800+ row list made every scroll frame repaint a huge
@@ -684,12 +684,12 @@ pub fn FavoritesBody(
                     span { "{i18n::t(\"select_all\")}" }
                 }
                 div {
-                    class: if is_modern {
+                    class: if is_vaxry {
                         "grid px-3 py-2 text-[10px] font-bold border-b mb-1"
                     } else {
                         "grid gap-6 px-2 py-2 border-b border-white/5 text-sm font-medium text-slate-500 mb-2"
                     },
-                    style: if is_modern {
+                    style: if is_vaxry {
                         "grid-template-columns: 40px 1fr 180px 180px 56px 40px; color: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.06);"
                     } else {
                         "grid-template-columns: 40px minmax(0, 1fr) 200px 200px 64px 40px; align-items: center;"

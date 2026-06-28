@@ -1011,7 +1011,7 @@ pub fn DiscoverPlaylistDetail(
     }
 
     // Loading / error keep a lightweight header + back button; the loaded state
-    // hands off to the shared modern TrackListView (same look as the local
+    // hands off to the shared vaxry TrackListView (same look as the local
     // playlist / album pages) so Discover playlists match everywhere else.
     if *loading.read() {
         return rsx! {

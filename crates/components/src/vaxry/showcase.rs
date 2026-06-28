@@ -3,14 +3,14 @@ use dioxus::prelude::*;
 use hooks::use_player_controller::PlayerController;
 
 use crate::NavigationController;
-use crate::constants::{COLUMNS_MODERN, COLUMNS_MODERN_ALBUM};
+use crate::constants::{COLUMNS_VAXRY, COLUMNS_VAXRY_ALBUM};
 use crate::header::Header;
 use crate::showcase::{self, ShowcaseProps};
 use crate::track_row::TrackRow;
 use std::collections::HashSet;
 
 #[component]
-pub fn ShowcaseModern(props: ShowcaseProps) -> Element {
+pub fn ShowcaseVaxry(props: ShowcaseProps) -> Element {
     let mut ctrl = use_context::<PlayerController>();
     let config = use_context::<Signal<AppConfig>>();
     let _nav_ctrl = use_context::<NavigationController>();
@@ -213,7 +213,7 @@ pub fn ShowcaseModern(props: ShowcaseProps) -> Element {
             } else {
                 div { class: "shrink-0",
                     Header {
-                        is_modern: true,
+                        is_vaxry: true,
                         is_album: props.is_album,
                         is_selection_mode: props.is_selection_mode,
                         on_select_all: props.on_select_all,
@@ -224,7 +224,7 @@ pub fn ShowcaseModern(props: ShowcaseProps) -> Element {
 
                 div { class: "flex-1 min-h-0 w-full flex flex-col overflow-hidden",
                     crate::virtual_scroll::VirtualScrollView {
-                        id: "modern-showcase-scroll".to_string(),
+                        id: "vaxry-showcase-scroll".to_string(),
                         class: "flex-1 min-h-0 overflow-y-auto pb-20".to_string(),
                         scroll_stat,
                         container_height,
@@ -275,7 +275,7 @@ pub fn ShowcaseModern(props: ShowcaseProps) -> Element {
                                     is_new_disc = true;
                                     last_disc_size = display_idx;
                                 }
-                                let columns = if props.is_album { COLUMNS_MODERN_ALBUM } else { COLUMNS_MODERN };
+                                let columns = if props.is_album { COLUMNS_VAXRY_ALBUM } else { COLUMNS_VAXRY };
                                 rsx! {
                                     div { key: "{track.id.uid()}", class: "contents",
                                     div { class: "flex items-center group",

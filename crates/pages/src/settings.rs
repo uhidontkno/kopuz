@@ -447,7 +447,7 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                                             class: "bg-stone-800 text-white rounded-lg px-3 py-2 text-sm border border-white/10 focus:outline-none focus:border-indigo-500",
                                             onchange: move |evt| {
                                                 config.write().ui_style = match evt.value().as_str() {
-                                                    "modern" => config::UiStyle::Modern,
+                                                    "vaxry" => config::UiStyle::Vaxry,
                                                     _ => config::UiStyle::Normal,
                                                 };
                                             },
@@ -457,9 +457,9 @@ pub fn Settings(config: Signal<AppConfig>) -> Element {
                                                 "{i18n::t(\"ui_normal\")}"
                                             }
                                             option {
-                                                value: "modern",
-                                                selected: current_style == config::UiStyle::Modern,
-                                                "{i18n::t(\"ui_modern\")}"
+                                                value: "vaxry",
+                                                selected: current_style == config::UiStyle::Vaxry,
+                                                "{i18n::t(\"ui_vaxry\")}"
                                             }
                                         }
                                     }

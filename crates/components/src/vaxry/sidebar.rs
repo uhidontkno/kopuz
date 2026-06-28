@@ -97,7 +97,7 @@ const TOOL_ITEMS: &[NavItem] = &[NavItem {
 }];
 
 #[component]
-pub fn SidebarModern(props: SidebarProps) -> Element {
+pub fn SidebarVaxry(props: SidebarProps) -> Element {
     let config = use_context::<Signal<config::AppConfig>>();
     let mut width = use_signal(|| 200i32);
     let mut is_collapsed = use_signal(|| false);
@@ -229,7 +229,7 @@ pub fn SidebarModern(props: SidebarProps) -> Element {
                         }
                         for item in *items {
                             if item.route != Route::Discover || has_discover() {
-                                ModernNavItem {
+                                VaxryNavItem {
                                     key: "{item.key}",
                                     item: item.clone(),
                                     active: current_route == item.route,
@@ -246,7 +246,7 @@ pub fn SidebarModern(props: SidebarProps) -> Element {
 
                 div { class: "mx-3 my-2 h-px", style: "background: rgba(255,255,255,0.06);" }
                 for item in TOOL_ITEMS {
-                    ModernNavItem {
+                    VaxryNavItem {
                         key: "{item.key}",
                         item: item.clone(),
                         active: current_route == item.route,
@@ -268,7 +268,7 @@ pub fn SidebarModern(props: SidebarProps) -> Element {
 }
 
 #[component]
-fn ModernNavItem(
+fn VaxryNavItem(
     item: NavItem,
     active: bool,
     collapsed: bool,

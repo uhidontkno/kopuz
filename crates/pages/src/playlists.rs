@@ -91,10 +91,10 @@ pub fn PlaylistsPage(
         last_source.set(config.read().active_source.clone());
     }
 
-    let is_modern = config.read().ui_style == UiStyle::Modern;
+    let is_vaxry = config.read().ui_style == UiStyle::Vaxry;
 
     rsx! {
-        div { class: if cfg!(target_os = "android") { "px-4 pt-2 pb-28 absolute inset-0 flex flex-col" } else if is_modern { "px-6 pt-6 absolute inset-0 flex flex-col" } else { "px-8 pt-8 absolute inset-0 flex flex-col" },
+        div { class: if cfg!(target_os = "android") { "px-4 pt-2 pb-28 absolute inset-0 flex flex-col" } else if is_vaxry { "px-6 pt-6 absolute inset-0 flex flex-col" } else { "px-8 pt-8 absolute inset-0 flex flex-col" },
             if let Some(pid) = selected_playlist_id.read().clone() {
                 {
                     let pid_for_dl = pid.clone();
@@ -208,8 +208,8 @@ pub fn PlaylistsPage(
                     }
                 }
             } else {
-                div { class: if is_modern { "flex items-center justify-between mb-6" } else { "flex items-center justify-between mb-8" },
-                    if is_modern {
+                div { class: if is_vaxry { "flex items-center justify-between mb-6" } else { "flex items-center justify-between mb-8" },
+                    if is_vaxry {
                         div {
                             p {
                                 class: "text-[10px] font-bold mb-0.5",

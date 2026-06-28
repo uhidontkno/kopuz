@@ -16,7 +16,7 @@ fn icon_class(
 
 #[component]
 pub fn Header(
-    is_modern: bool,
+    is_vaxry: bool,
     is_album: bool,
     #[props(default = false)] is_selection_mode: bool,
     #[props(default = None)] on_select_all: Option<EventHandler<bool>>,
@@ -26,10 +26,10 @@ pub fn Header(
     >,
     #[props(default = false)] is_reorderable: bool,
 ) -> Element {
-    let columns_modern = if is_album {
-        COLUMNS_MODERN_ALBUM
+    let columns_vaxry = if is_album {
+        COLUMNS_VAXRY_ALBUM
     } else {
-        COLUMNS_MODERN
+        COLUMNS_VAXRY
     };
 
     let columns_normal = if is_album {
@@ -38,11 +38,11 @@ pub fn Header(
         COLUMNS_NORMAL
     };
 
-    if is_modern {
+    if is_vaxry {
         return rsx! {
             div {
                 class: "grid px-3 py-2 text-[10px] font-bold text-white/50 border-white/10 border-b mb-1",
-                style: "grid-template-columns: {columns_modern};",
+                style: "grid-template-columns: {columns_vaxry};",
                 div {
                     class: "flex items-center h-4 shrink-0",
                     if is_selection_mode {

@@ -17,7 +17,7 @@ pub fn Radio(props: RadioProps) -> Element {
     let _ = &props;
     let mut ctrl = use_context::<PlayerController>();
     let config = props.config;
-    let is_modern = config.read().ui_style == UiStyle::Modern;
+    let is_vaxry = config.read().ui_style == UiStyle::Vaxry;
 
     let registry = use_context::<Signal<radio::registry::StationRegistry>>();
     // can panic, will check again later.
@@ -55,13 +55,13 @@ pub fn Radio(props: RadioProps) -> Element {
         div {
             class: if cfg!(target_os = "android") {
                 "px-4 pt-2 pb-28 w-full h-full overflow-y-auto"
-            } else if is_modern {
+            } else if is_vaxry {
                 "px-6 pt-6 pb-24 w-full h-full overflow-y-auto"
             } else {
                 "p-8 w-full h-full overflow-y-auto"
             },
 
-            if is_modern {
+            if is_vaxry {
                 div { class: "mb-6 flex items-end justify-between",
                     div {
                         p {
@@ -74,7 +74,7 @@ pub fn Radio(props: RadioProps) -> Element {
                             "{i18n::t(\"radio\")}"
                         }
                     }
-                    // Search — Modern
+                    // Search — Vaxry
                     div { class: "relative w-64",
                         i {
                             class: "fa-solid fa-magnifying-glass absolute top-1/2 -translate-y-1/2 text-xs",
@@ -164,8 +164,8 @@ pub fn Radio(props: RadioProps) -> Element {
                 }
             }
 
-            if is_modern {
-                // Modern
+            if is_vaxry {
+                // Vaxry
                 if !filtered.is_empty() {
                     div { class: "flex flex-col",
                         div {

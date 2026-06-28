@@ -7,7 +7,7 @@ use player::player::Player;
 use crate::shared::{fmt_time, toggle_favorite};
 
 #[component]
-pub fn BottombarModern(
+pub fn BottombarVaxry(
     mut config: Signal<config::AppConfig>,
     mut player: Signal<Player>,
     mut is_playing: Signal<bool>,

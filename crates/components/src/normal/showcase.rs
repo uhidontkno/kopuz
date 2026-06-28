@@ -208,7 +208,7 @@ pub fn ShowcaseNormal(props: ShowcaseProps) -> Element {
                  } else {
                      div { class: "shrink-0",
                          Header {
-                             is_modern: false,
+                             is_vaxry: false,
                              is_album: props.is_album,
                              is_selection_mode: props.is_selection_mode,
                              on_select_all: props.on_select_all,

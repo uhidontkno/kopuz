@@ -427,7 +427,8 @@ pub enum PlayerBarPosition {
 pub enum UiStyle {
     #[default]
     Normal,
-    Modern,
+    #[serde(alias = "Modern")]
+    Vaxry,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

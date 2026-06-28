@@ -31,7 +31,7 @@ pub fn SearchGenreDetail(
     let config = use_context::<Signal<AppConfig>>();
     let gens = hooks::db_reactivity::use_generations();
     let offline_tracks = config.read().offline_tracks.clone();
-    let is_modern = config.read().ui_style == UiStyle::Modern;
+    let is_vaxry = config.read().ui_style == UiStyle::Vaxry;
     let sort_state = use_signal(|| None);
     let sorted_genre_tracks = showcase::sorted_track_pairs(&genre_tracks, *sort_state.read());
     let genre_tracks_list: Vec<Track> =
@@ -69,7 +69,7 @@ pub fn SearchGenreDetail(
                     }
                 }
 
-                if is_modern {
+                if is_vaxry {
                     div { class: "flex items-end gap-6 mb-8 shrink-0",
                         div {
                             class: "w-44 h-44 rounded-lg overflow-hidden shrink-0 shadow-2xl bg-white/5",
@@ -168,7 +168,7 @@ pub fn SearchGenreDetail(
                 }
                 div { class: "shrink-0 mb-4",
                     Header{
-                        is_modern: is_modern,
+                        is_vaxry: is_vaxry,
                         is_album: false,
                         sort_state: sort_state
                     }

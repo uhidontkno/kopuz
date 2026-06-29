@@ -29,7 +29,7 @@ mod app_lifecycle;
 mod artwork_protocol;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 mod chrome_trace;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(all(not(debug_assertions), any(target_os = "linux", target_os = "macos")))]
 mod desktop_integration;
 mod desktop_shell;
 mod legacy;
